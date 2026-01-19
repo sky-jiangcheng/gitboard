@@ -54,9 +54,21 @@ chmod +x statistics.sh
 
 ## Configuration / 配置说明
 
-Create a `.statistics.conf` file in the same directory as the script for custom configuration:
+The script includes built-in default configurations. You can create a `.statistics.conf` file in the same directory as the script to override these defaults:
 
-在脚本同目录下创建 `.statistics.conf` 文件可自定义配置：
+脚本内置了默认配置。你可以在脚本同目录下创建 `.statistics.conf` 文件来覆盖这些默认值：
+
+### Default Configurations / 默认配置
+
+- **SCAN_DIR**: `.` (current directory / 当前目录)
+- **SCAN_DEPTH**: `3` (scan up to 3 levels deep / 扫描3层深度)
+- **DAILY_CODE_STANDARD**: `500` (lines per workday / 每个工作日500行)
+
+### Creating Configuration File / 创建配置文件
+
+Create a `.statistics.conf` file with the following format:
+
+创建 `.statistics.conf` 文件，格式如下：
 
 ```bash
 # Scan directory (absolute or relative path) / 扫描目录（绝对路径或相对路径）
@@ -68,6 +80,10 @@ SCAN_DEPTH=3
 # Workday code standard (lines/day) / 工作日代码量标准（行/天）
 DAILY_CODE_STANDARD=500
 ```
+
+**Note**: Only include the configuration items you want to override. Other values will use defaults.
+
+**注意**：只需包含想要覆盖的配置项，其他值将使用默认值。
 
 ### Configuration Options / 配置项说明
 

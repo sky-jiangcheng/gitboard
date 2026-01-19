@@ -1,0 +1,8 @@
+# Configuration file - ignored to allow local customization
+# Configuration file is optional; users can create their own copy / 配置文件 - 被忽略以允许本地自定义
+# 配置文件是可选的；用户可以创建自己的副本
+.statistics.conf
+
+# Temporary files / 临时文件
+*.tmp
+*.swp
