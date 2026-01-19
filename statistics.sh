@@ -36,8 +36,11 @@ else
         DATE_DESC="指定日期 ($STATS_MODE)"
     else
         echo "错误: 无效的统计模式，请使用 'yesterday'、'today' 或指定日期格式 YYYY-MM-DD"
+        echo "Error: Invalid statistics mode. Please use 'yesterday', 'today', or date format YYYY-MM-DD"
         echo "用法: $0 [yesterday|today|YYYY-MM-DD]"
+        echo "Usage: $0 [yesterday|today|YYYY-MM-DD]"
         echo "示例: $0 2026-01-19"
+        echo "Example: $0 2026-01-19"
         exit 1
     fi
 fi
@@ -60,14 +63,14 @@ if [ "$DAY_OF_WEEK" -ge 6 ]; then
     IS_WORKDAY=0
 fi
 
-echo "统计日期: $STATS_DATE ($DATE_DESC)"
-echo "统计用户: $MY_NAME"
-echo "扫描目录: $SCAN_DIR"
-echo "扫描深度: $SCAN_DEPTH 层"
+echo "统计日期: $STATS_DATE ($DATE_DESC) | Statistics Date: $STATS_DATE ($DATE_DESC)"
+echo "统计用户: $MY_NAME | User: $MY_NAME"
+echo "扫描目录: $SCAN_DIR | Scan Directory: $SCAN_DIR"
+echo "扫描深度: $SCAN_DEPTH 层 | Scan Depth: $SCAN_DEPTH"
 if [ $IS_WORKDAY -eq 1 ]; then
-    echo "日期类型: 工作日（代码量标准: $DAILY_CODE_STANDARD 行/天）"
+    echo "日期类型: 工作日（代码量标准: $DAILY_CODE_STANDARD 行/天） | Type: Workday (Standard: $DAILY_CODE_STANDARD lines/day)"
 else
-    echo "日期类型: 周末（无代码量要求）"
+    echo "日期类型: 周末（无代码量要求） | Type: Weekend (No requirement)"
 fi
 echo ""
 
@@ -86,8 +89,8 @@ my_tmp_file=$(mktemp)
 
 # 检查扫描目录是否存在
 if [ ! -d "$SCAN_DIR" ]; then
-    echo "错误: 扫描目录不存在: $SCAN_DIR"
-    echo "请检查配置文件或使用绝对路径"
+    echo "错误: 扫描目录不存在: $SCAN_DIR | Error: Scan directory does not exist: $SCAN_DIR"
+    echo "请检查配置文件或使用绝对路径 | Please check config file or use absolute path"
     exit 1
 fi
 
@@ -175,11 +178,11 @@ find "$SCAN_DIR" -maxdepth "$SCAN_DEPTH" -name ".git" -type d 2>/dev/null | whil
 
     # 只显示有变更的仓库（所有人或自己有提交）
     if [ "${add:-0}" -gt 0 ] || [ "${del:-0}" -gt 0 ] || [ "${my_add_local:-0}" -gt 0 ] || [ "${my_del_local:-0}" -gt 0 ]; then
-        echo "=== 正在统计: $repo_name ==="
-        echo "  文件变更: $files (我的: $my_files_local)"
-        echo "  新增行数: $add (我的: $my_add_local)"
-        echo "  删除行数: $del (我的: $my_del_local)"
-        echo "  净增行数: $((add - del)) (我的: $((my_add_local - my_del_local)))"
+        echo "=== 正在统计: $repo_name | Statistics: $repo_name ==="
+        echo "  文件变更: $files (我的: $my_files_local) | Files Changed: $files (Mine: $my_files_local)"
+        echo "  新增行数: $add (我的: $my_add_local) | Lines Added: $add (Mine: $my_add_local)"
+        echo "  删除行数: $del (我的: $my_del_local) | Lines Deleted: $del (Mine: $my_del_local)"
+        echo "  净增行数: $((add - del)) (我的: $((my_add_local - my_del_local))) | Net Added: $((add - del)) (Mine: $((my_add_local - my_del_local)))"
         echo ""
     fi
 
@@ -214,25 +217,25 @@ else
 fi
 
 echo "=========================================="
-echo "统计汇总 ($STATS_DATE)"
+echo "统计汇总 ($STATS_DATE) | Summary ($STATS_DATE)"
 echo "=========================================="
-echo "仓库数量: $repo_count"
+echo "仓库数量: $repo_count | Repositories: $repo_count"
 echo "------------------------------------------"
-echo "所有人汇总:"
-echo "  文件变更总数: $total_files"
-echo "  新增行数总计: $total_additions"
-echo "  删除行数总计: $total_deletions"
-echo "  净增行数总计: $((total_additions - total_deletions))"
+echo "所有人汇总: | All Users:"
+echo "  文件变更总数: $total_files | Total Files Changed: $total_files"
+echo "  新增行数总计: $total_additions | Total Lines Added: $total_additions"
+echo "  删除行数总计: $total_deletions | Total Lines Deleted: $total_deletions"
+echo "  净增行数总计: $((total_additions - total_deletions)) | Net Lines Added: $((total_additions - total_deletions))"
 echo "------------------------------------------"
-echo "$MY_NAME 的贡献:"
-echo "  文件变更数: $my_files"
-echo "  新增行数: $my_additions"
-echo "  删除行数: $my_deletions"
-echo "  净增行数: $((my_additions - my_deletions))"
+echo "$MY_NAME 的贡献: | $MY_NAME's Contribution:"
+echo "  文件变更数: $my_files | Files Changed: $my_files"
+echo "  新增行数: $my_additions | Lines Added: $my_additions"
+echo "  删除行数: $my_deletions | Lines Deleted: $my_deletions"
+echo "  净增行数: $((my_additions - my_deletions)) | Net Lines Added: $((my_additions - my_deletions))"
 if [ "$percentage" != "N/A" ]; then
-    echo "  占比: ${percentage}%"
+    echo "  占比: ${percentage}% | Percentage: ${percentage}%"
 else
-    echo "  占比: N/A"
+    echo "  占比: N/A | Percentage: N/A"
 fi
 echo "=========================================="
 
@@ -240,33 +243,36 @@ echo "=========================================="
 if [ $IS_WORKDAY -eq 1 ]; then
     echo ""
     echo "=========================================="
-    echo "工作日代码量检查 ($DATE_DESC)"
+    echo "工作日代码量检查 ($DATE_DESC) | Workday Code Check ($DATE_DESC)"
     echo "=========================================="
-    echo "标准要求: 每天 $DAILY_CODE_STANDARD 行代码"
-    echo "实际提交: $my_additions 行"
+    echo "标准要求: 每天 $DAILY_CODE_STANDARD 行代码 | Standard: $DAILY_CODE_STANDARD lines/day"
+    echo "实际提交: $my_additions 行 | Actual: $my_additions lines"
     progress=$(awk "BEGIN {printf \"%.1f\", $my_additions * 100.0 / $DAILY_CODE_STANDARD}")
-    echo "完成进度: ${progress}%"
+    echo "完成进度: ${progress}% | Progress: ${progress}%"
     echo ""
 
     if [ $my_additions -lt $DAILY_CODE_STANDARD ]; then
         GAP=$((DAILY_CODE_STANDARD - my_additions))
         echo "⚠️  警告: $DATE_DESC未达到工作日代码量标准！"
-        echo "⚠️  还需要补充: $GAP 行代码"
-        echo "⚠️  请努力赶上进度！"
+        echo "⚠️  Warning: Workday code standard not met on $DATE_DESC!"
+        echo "⚠️  还需要补充: $GAP 行代码 | Need: $GAP more lines"
+        echo "⚠️  请努力赶上进度！ | Please catch up!"
         exit 1
     else
         echo "✅ $DATE_DESC已完成工作日代码量标准！继续保持！"
+        echo "✅ Workday code standard met! Keep it up!"
         exit 0
     fi
 else
     echo ""
     echo "=========================================="
-    echo "周末代码量检查"
+    echo "周末代码量检查 | Weekend Code Check"
     echo "=========================================="
-    echo "周末无强制代码量要求"
-    echo "实际提交: $my_additions 行"
+    echo "周末无强制代码量要求 | No mandatory requirement on weekends"
+    echo "实际提交: $my_additions 行 | Actual: $my_additions lines"
     if [ $my_additions -gt 0 ]; then
         echo "👍 周末也这么努力，太棒了！"
+        echo "👍 Working hard on weekend too! Awesome!"
     fi
     exit 0
 fi
