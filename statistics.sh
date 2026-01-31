@@ -15,6 +15,7 @@ fi
 SCAN_DIR="${SCAN_DIR:-.}"                    # 扫描目录，默认当前目录
 SCAN_DEPTH="${SCAN_DEPTH:-3}"                 # 扫描深度，默认3层
 DAILY_CODE_STANDARD="${DAILY_CODE_STANDARD:-500}"  # 代码量标准，默认500行/天
+STATS_BRANCHES="${STATS_BRANCHES:-}"         # 统计分支，默认空（统计当前分支），多个分支用逗号分隔
 
 # 统计模式：yesterday、today 或指定日期（格式：YYYY-MM-DD）
 STATS_MODE="${1:-yesterday}"
@@ -67,6 +68,11 @@ echo "统计日期: $STATS_DATE ($DATE_DESC) | Statistics Date: $STATS_DATE ($DA
 echo "统计用户: $MY_NAME | User: $MY_NAME"
 echo "扫描目录: $SCAN_DIR | Scan Directory: $SCAN_DIR"
 echo "扫描深度: $SCAN_DEPTH 层 | Scan Depth: $SCAN_DEPTH"
+if [ -n "$STATS_BRANCHES" ]; then
+    echo "统计分支: $STATS_BRANCHES | Branches: $STATS_BRANCHES"
+else
+    echo "统计分支: 当前分支 | Branches: Current branch"
+fi
 if [ $IS_WORKDAY -eq 1 ]; then
     echo "日期类型: 工作日（代码量标准: $DAILY_CODE_STANDARD 行/天） | Type: Workday (Standard: $DAILY_CODE_STANDARD lines/day)"
 else
@@ -101,10 +107,37 @@ find "$SCAN_DIR" -maxdepth "$SCAN_DEPTH" -name ".git" -type d 2>/dev/null | whil
     repo_name=$(basename "$repo_dir")
     repo_path=$(cd "$repo_dir" && pwd)
 
+    # 构建分支参数
+    if [ -n "$STATS_BRANCHES" ]; then
+        # 支持逗号或空格分隔的分支列表
+        # 将逗号替换为空格，然后按空格分割
+        branch_list=$(echo "$STATS_BRANCHES" | tr ',' ' ')
+        branch_params=""
+        for branch in $branch_list; do
+            # 检查该分支是否在当前仓库中存在
+            if (cd "$repo_path" && git show-ref --verify --quiet "refs/heads/$branch" 2>/dev/null); then
+                if [ -z "$branch_params" ]; then
+                    branch_params="$branch"
+                else
+                    branch_params="$branch_params $branch"
+                fi
+            fi
+        done
+
+        # 如果所有配置的分支都不存在，使用当前分支
+        if [ -z "$branch_params" ]; then
+            branch_params="--first-parent"
+        fi
+    else
+        # 只统计当前分支
+        branch_params="--first-parent"
+    fi
+
     # 统计所有用户的提交信息
     stats=$(cd "$repo_path" && git log \
         --since="$STATS_DATE 00:00:00" \
         --until="$STATS_DATE 23:59:59" \
+        $branch_params \
         --pretty=tformat: \
         --shortstat \
         2>/dev/null | awk '
@@ -112,10 +145,13 @@ find "$SCAN_DIR" -maxdepth "$SCAN_DEPTH" -name ".git" -type d 2>/dev/null | whil
             if ($0 ~ /files? changed/) {
                 files += $1;
                 added += $4;
-                # 检查是否有删除行数
+                # 检查是否有删除行数（在 insertion 和 deletion 之间）
                 for (i=5; i<=NF; i++) {
-                    if ($(i-1) ~ /deletion/) {
-                        deleted += $i;
+                    if ($(i-1) ~ /insertion/ && $(i+1) ~ /deletion/) {
+                        # format: X insertion(+), Y deletion(-)
+                        # 提取数字部分（去掉括号）
+                        split($i, arr, "[+,]");
+                        deleted += arr[1];
                     }
                 }
             }
@@ -128,6 +164,7 @@ find "$SCAN_DIR" -maxdepth "$SCAN_DEPTH" -name ".git" -type d 2>/dev/null | whil
         --since="$STATS_DATE 00:00:00" \
         --until="$STATS_DATE 23:59:59" \
         --author="$MY_NAME" \
+        $branch_params \
         --pretty=tformat: \
         --shortstat \
         2>/dev/null | awk '
@@ -135,10 +172,13 @@ find "$SCAN_DIR" -maxdepth "$SCAN_DEPTH" -name ".git" -type d 2>/dev/null | whil
             if ($0 ~ /files? changed/) {
                 files += $1;
                 added += $4;
-                # 检查是否有删除行数
+                # 检查是否有删除行数（在 insertion 和 deletion 之间）
                 for (i=5; i<=NF; i++) {
-                    if ($(i-1) ~ /deletion/) {
-                        deleted += $i;
+                    if ($(i-1) ~ /insertion/ && $(i+1) ~ /deletion/) {
+                        # format: X insertion(+), Y deletion(-)
+                        # 提取数字部分（去掉括号）
+                        split($i, arr, "[+,]");
+                        deleted += arr[1];
                     }
                 }
             }
