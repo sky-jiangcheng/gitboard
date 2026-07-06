@@ -8,3 +8,10 @@
 # Temporary files / 临时文件
 *.tmp
 *.swp
+
+# Git Dashboard binary
+git-dashboard
+
+# Node
+web/node_modules/
+web/dist/

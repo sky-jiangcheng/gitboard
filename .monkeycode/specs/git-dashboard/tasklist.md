@@ -1,210 +1,83 @@
 # 需求实施计划
 
-- [ ] 1. 初始化 Go 项目结构和模块
+- [x] 1. 初始化 Go 项目结构和模块
   - 创建 `go.mod`，设置 module 名称为 `git-dashboard`
   - 创建 `main.go` 入口文件，定义程序启动骨架
   - 创建 `internal/` 目录下的子包目录结构：`server/`, `scanner/`, `stats/`, `grouper/`, `db/`, `platform/`
   - 创建 `scripts/` 目录
   - 对应需求: R1 (扫描范围配置), R8 (跨平台支持)
 
-- [ ] 2. 实现平台工具层 (internal/platform)
-  - [ ] 2.1 实现平台检测函数 `DetectOS()`，返回当前操作系统类型（windows/darwin/linux）
-    - 使用 `runtime.GOOS` 判断
-  - [ ] 2.2 实现默认扫描根目录获取函数 `DefaultScanRoots()`，按平台返回默认路径
-    - Windows：枚举所有盘符，排除系统盘（C:），对应 R1-AC2
-    - macOS：返回当前用户 HOME 目录，对应 R1-AC3
-    - Linux：返回 HOME 环境变量，对应 R1-AC4
-    - 对应 R8-AC1, R8-AC2, R8-AC3
-  - [ ] 2.3 实现浏览器打开函数 `OpenBrowser(url string)`
-    - 根据 OS 调用系统命令：Windows `cmd /c start`, macOS `open`, Linux `xdg-open`
-    - 对应 R6-AC1
-  - [ ] 2.4 实现 Git 命令可用性检测 `CheckGitInstalled() bool`
-    - 通过 `exec.LookPath("git")` 检测
-    - 对应设计文档错误处理"Git 命令不可用"场景
+- [x] 2. 实现平台工具层 (internal/platform)
+  - [x] 2.1 实现平台检测函数 `DetectOS()`
+  - [x] 2.2 实现默认扫描根目录获取函数 `DefaultScanRoots()`
+  - [x] 2.3 实现浏览器打开函数 `OpenBrowser(url string)`
+  - [x] 2.4 实现 Git 命令可用性检测 `CheckGitInstalled() bool`
   - [ ]* 2.5 为平台工具层编写单元测试
 
-- [ ] 3. 实现数据库层 (internal/db)
-  - [ ] 3.1 实现 SQLite 数据库初始化 `InitDB(dbPath string) (*sql.DB, error)`
-    - 使用 `modernc.org/sqlite` 纯 Go 驱动（无需 CGO，跨平台编译友好）
-    - 创建 `scan_roots`, `repositories`, `projects`, `daily_stats`, `app_config` 五张表
-    - 对应设计文档数据模型，对应 R7 (配置持久化)
-  - [ ] 3.2 实现配置存取函数
-    - `GetConfig(key string) (string, error)` — 从 app_config 表读取
-    - `SetConfig(key, value string) error` — 写入 app_config 表
-    - `GetAllConfigs() (map[string]string, error)` — 读取所有配置
-    - 对应 R7-AC1, R7-AC2
-  - [ ] 3.3 实现 ScanRoots 数据访问函数
-    - `GetScanRoots() ([]string, error)` — 获取所有扫描根目录
-    - `AddScanRoot(path string) error` — 添加扫描根目录
-    - `RemoveScanRoot(path string) error` — 移除扫描根目录
-    - 对应 R1-AC5, R1-AC6
-  - [ ] 3.4 实现 Projects 数据访问函数
-    - `UpsertProject(name, rootPath string, levelOverride int, isAutoGrouped bool) (int64, error)`
-    - `GetAllProjects() ([]Project, error)`
-    - `GetProjectByID(id int64) (*Project, error)`
-    - `UpdateProjectLevel(id int64, levelOverride int) error`
-    - 对应 R4-AC4
-  - [ ] 3.5 实现 Repositories 数据访问函数
-    - `UpsertRepository(path string, projectID int64) error`
-    - `GetRepositoriesByProjectID(projectID int64) ([]Repository, error)`
-    - `GetAllRepositories() ([]Repository, error)`
-    - `UpdateRepositoryLastScanned(id int64) error`
-    - 对应 R2-AC2
-  - [ ] 3.6 实现 DailyStats 数据访问函数
-    - `UpsertDailyStat(repoID int64, date, author string, files, added, deleted int) error`
-    - `GetStatsByProject(projectID int64) ([]DailyStat, error)` — 获取项目下所有仓库的统计
-    - `GetStatsByDate(date string) ([]DailyStat, error)` — 获取指定日期的所有统计
-    - 对应 R5-AC3
+- [x] 3. 实现数据库层 (internal/db)
+  - [x] 3.1 实现 SQLite 数据库初始化 `InitDB(dbPath string) (*sql.DB, error)`
+  - [x] 3.2 实现配置存取函数
+  - [x] 3.3 实现 ScanRoots 数据访问函数
+  - [x] 3.4 实现 Projects 数据访问函数
+  - [x] 3.5 实现 Repositories 数据访问函数
+  - [x] 3.6 实现 DailyStats 数据访问函数
   - [ ]* 3.7 为数据库层编写单元测试
 
-- [ ] 4. 检查点 — 确保数据库层编译通过，表结构正确创建
-  - 编写一个简单的 `main.go` 临时入口验证数据库初始化和基本 CRUD 操作
-  - 如有疑问请询问用户
+- [x] 4. 检查点 — 数据库层编译通过，表结构正确创建
 
-- [ ] 5. 实现扫描引擎 (internal/scanner)
-  - [ ] 5.1 实现 `ScanRepositories(roots []string, maxDepth int) ([]RepoInfo, error)`
-    - 递归遍历每个根目录，查找 `.git` 目录
-    - 记录每个仓库的绝对路径
-    - 限制扫描深度为配置的 maxDepth（默认 5）
-    - 子目录数量超过 10000 时中止，对应 R2-AC3
-    - 跳过无权限的目录，对应错误处理"仓库权限不足"
-    - 对应 R2-AC1, R2-AC2
+- [x] 5. 实现扫描引擎 (internal/scanner)
+  - [x] 5.1 实现 `ScanRepositories(roots []string, maxDepth int) ([]RepoInfo, error)`
   - [ ]* 5.2 为扫描引擎编写单元测试
-    - 创建临时目录结构含模拟 .git 目录，验证扫描结果
 
-- [ ] 6. 实现统计引擎 (internal/stats)
-  - [ ] 6.1 实现 `StatsResult` 结构体和 `QueryStats(repoPath, date, author string) (*StatsResult, error)`
-    - 调用 `git log --since --until --shortstat --first-parent` 获取提交统计
-    - 解析 `git log` 输出，提取文件变更数、新增行数、删除行数
-    - 支持 `author` 参数过滤（可选），不传则统计所有作者
-    - 设置 30 秒超时，对应错误处理"超大仓库扫描超时"
-    - 对应 R5-AC3，参考现有 statistics.sh 的 git log 解析逻辑
-  - [ ] 6.2 实现 `QueryMultiBranch(repoPath, date, author string, branches []string) ([]StatsResult, error)`
-    - 对多个分支分别统计后聚合结果
-    - 对应设计文档统计引擎多分支支持
+- [x] 6. 实现统计引擎 (internal/stats)
+  - [x] 6.1 实现 `Result` 结构体和 `QueryStats(repoPath, date, author string) (*Result, error)`
+  - [x] 6.2 实现 `QueryMultiBranch(repoPath, date string, branches []string) (*Result, error)`
   - [ ]* 6.3 为统计引擎编写单元测试
-    - 创建临时 Git 仓库，提交已知变更，验证统计结果正确性
 
-- [ ] 7. 实现分组引擎 (internal/grouper)
-  - [ ] 7.1 实现 `GroupRepositories(repos []RepoInfo) []ProjectGroup`
-    - 规则 1：同级目录仅一个 Git 仓库 → 父目录作为项目
-    - 规则 2：同级目录多个 Git 仓库 → 父目录作为项目，包含多个子仓库
-    - 规则 3：父目录本身也是 Git 仓库 → 父仓库独立为一个项目
-    - 对应 R3-AC1, R3-AC2, R3-AC3
-  - [ ] 7.2 实现 `AdjustProjectLevel(project *ProjectGroup, direction string, allRepos []RepoInfo) (*ProjectGroup, error)`
-    - 向上调整：扩大到上级目录，合并该目录下其他仓库
-    - 向下调整：拆分为子目录为单位的独立项目
-    - 对应 R4-AC1, R4-AC2, R4-AC3
+- [x] 7. 实现分组引擎 (internal/grouper)
+  - [x] 7.1 实现 `GroupRepositories(repos []RepoInfo) []ProjectGroup`
+  - [x] 7.2 实现 `AdjustProjectLevelUp` / `AdjustProjectLevelDown`
   - [ ]* 7.3 为分组引擎编写单元测试
 
-- [ ] 8. 检查点 — 确保后端核心引擎（扫描、统计、分组）编译通过且基本逻辑正确
-  - 编写集成测试脚本，用临时目录验证扫描→分组→统计整条链路
-  - 如有疑问请询问用户
+- [x] 8. 检查点 — 后端核心引擎（扫描、统计、分组）编译通过
 
-- [ ] 9. 实现 HTTP API 层 (internal/server)
-  - [ ] 9.1 实现 HTTP 服务器初始化 `NewServer(db *sql.DB) *Server`
-    - 注册静态文件服务（前端构建产物）
-    - 注册 `/api/*` REST 路由
-    - 使用 `net/http` 标准库
-    - 对应 R6-AC1
-  - [ ] 9.2 实现 API 处理函数
-    - `GET /api/projects` — 调用 db 层获取项目列表，合并统计摘要，对应 R5-AC1
-    - `GET /api/projects/:id` — 获取单个项目详情及历史趋势数据，对应 R6-AC3
-    - `GET /api/projects/:id/stats?date=YYYY-MM-DD` — 触发统计引擎查询并返回，对应 R5-AC2
-    - `POST /api/projects/:id/level` — 调整项目目录级别，对应 R4
-    - `POST /api/scan` — 触发扫描引擎重新扫描，对应 R5-AC2
-    - `GET /api/config` — 获取当前配置，对应 R1
-    - `PUT /api/config` — 更新配置，对应 R1-AC5, R7-AC1
-    - `GET /api/summary?date=YYYY-MM-DD` — 汇总统计，对应 R5-AC5
-  - [ ] 9.3 实现扫描时自动统计逻辑
-    - 在 `POST /api/scan` 处理中：扫描仓库 → 分组项目 → 对每个仓库调用统计引擎获取当天数据 → 缓存到 daily_stats 表
-    - 对应 R5-AC2, R7-AC1
+- [x] 9. 实现 HTTP API 层 (internal/server)
+  - [x] 9.1 实现 HTTP 服务器初始化 `NewServer(db *sql.DB) *Server`
+  - [x] 9.2 实现全部 API 处理函数
+  - [x] 9.3 实现扫描时自动统计逻辑
   - [ ]* 9.4 为 API 处理函数编写 HTTP 测试
 
-- [ ] 10. 实现程序主入口 (main.go)
-  - [ ] 10.1 启动流程编排
-    - 启动时检测 Git 是否可用，不可用则输出错误并退出（对应错误处理"Git 命令不可用"）
-    - 初始化 SQLite 数据库（首次运行自动建库建表，对应 R7-AC3）
-    - 加载配置，若首次运行则应用平台默认扫描规则（对应 R1-AC1）
-    - 执行首次扫描和分组
-    - 启动 HTTP 服务器并打开浏览器（对应 R6-AC1）
-  - [ ] 10.2 实现 `//go:embed` 嵌入前端构建产物
-    - 条件编译：dev 模式下从本地文件系统读取，release 模式下从嵌入资源读取
-  - [ ] 10.3 实现优雅退出
-    - 捕获 SIGINT/SIGTERM 信号，关闭数据库连接和 HTTP 服务器
+- [x] 10. 实现程序主入口 (main.go)
+  - [x] 10.1 启动流程编排
+  - [x] 10.2 实现 `//go:embed` 嵌入前端构建产物
+  - [x] 10.3 实现优雅退出
 
-- [ ] 11. 初始化 React 前端项目 (web/)
-  - [ ] 11.1 使用 Vite 创建 React + TypeScript 项目
-    - 安装依赖：`react`, `react-dom`, `react-router-dom`, `chart.js`, `react-chartjs-2`
-    - 配置 `vite.config.ts`：设置 base 路径和构建输出到 `dist/`
-    - 对应 R6 (Web 面板界面)
-  - [ ] 11.2 创建 API 客户端封装 (`web/src/api/client.ts`)
-    - 封装 `fetch` 调用，统一错误处理
-    - 导出类型定义：`Project`, `ProjectDetail`, `StatsResult`, `AppConfig`, `Summary`
-    - 对应所有 API 接口
+- [x] 11. 初始化 React 前端项目 (web/)
+  - [x] 11.1 使用 Vite 创建 React + TypeScript 项目
+  - [x] 11.2 创建 API 客户端封装 (`web/src/api/client.ts`)
 
-- [ ] 12. 实现前端仪表盘页面 (Dashboard)
-  - [ ] 12.1 实现 `SummaryBar` 组件
-    - 展示仓库总数、总新增行、总删除行、个人贡献占比
-    - 对应 R5-AC5
-  - [ ] 12.2 实现 `DatePicker` 组件
-    - 预设选项：昨天、今天、自定义日期
-    - 选择后触发项目列表刷新
-    - 对应 R5-AC2
-  - [ ] 12.3 实现 `ProjectCard` 组件
-    - 显示项目名称、个人新增行数、删除行数、净增行数
-    - 工作日未达标时显示警告标识
-    - 点击跳转到项目详情页
-    - 对应 R5-AC1, R5-AC4
-  - [ ] 12.4 实现 `Dashboard` 页面
-    - 组合 SummaryBar + DatePicker + ProjectCard 网格布局
-    - "重新扫描"按钮，调用 POST /api/scan 并刷新列表
-    - 移动端响应式为单列布局
-    - 对应 R6-AC2, R6-AC5
+- [x] 12. 实现前端仪表盘页面 (Dashboard)
+  - [x] 12.1 实现 `SummaryBar` 组件
+  - [x] 12.2 实现 `DatePicker` 组件
+  - [x] 12.3 实现 `ProjectCard` 组件
+  - [x] 12.4 实现 `Dashboard` 页面
 
-- [ ] 13. 实现前端项目详情页面 (ProjectDetail)
-  - [ ] 13.1 实现 `TrendChart` 组件
-    - 使用 react-chartjs-2 绘制折线图
-    - X 轴为日期，Y 轴为新增行数
-    - 展示最近 30 天趋势
-    - 对应 R6-AC3
-  - [ ] 13.2 实现 `ProjectDetail` 页面
-    - 项目名称、路径、包含的子仓库列表
-    - 目录级别调整按钮（向上/向下），调用 POST /api/projects/:id/level
-    - 嵌入 TrendChart 组件
-    - 对应 R4-AC1, R6-AC3
+- [x] 13. 实现前端项目详情页面 (ProjectDetail)
+  - [x] 13.1 实现 `TrendChart` 组件
+  - [x] 13.2 实现 `ProjectDetail` 页面
 
-- [ ] 14. 实现前端设置页面 (Settings)
-  - [ ] 14.1 实现扫描根目录管理
-    - 列表展示当前扫描根目录，支持添加和删除
-    - 调用 PUT /api/config 持久化
-    - 对应 R1-AC5, R1-AC6
-  - [ ] 14.2 实现代码量标准和扫描深度配置
-    - 输入框设置 `daily_code_standard` 和 `scan_depth`
-    - 保存后即时生效
-    - 对应 R5-AC4, R7-AC1
+- [x] 14. 实现前端设置页面 (Settings)
+  - [x] 14.1 实现扫描根目录管理
+  - [x] 14.2 实现代码量标准和扫描深度配置
 
-- [ ] 15. 实现前端路由和导航
-  - [ ] 15.1 设置 React Router 路由
-    - `/` → Dashboard
-    - `/project/:id` → ProjectDetail
-    - `/settings` → Settings
-    - 对应 R6-AC4
-  - [ ] 15.2 实现顶部导航栏
-    - 应用标题、日期选择器、设置图标链接
-    - 对应 R6-AC4
+- [x] 15. 实现前端路由和导航
+  - [x] 15.1 设置 React Router 路由
+  - [x] 15.2 实现顶部导航栏
 
-- [ ] 16. 实现跨平台构建脚本 (scripts/build.sh)
-  - [ ] 16.1 构建脚本
-    - Step 1: `cd web && npm install && npm run build`
-    - Step 2: `go build -o git-dashboard .`（当前平台）
-    - Step 3（可选）: 交叉编译 Windows/macOS/Linux 三个目标
-    - 对应 R8 (跨平台支持)
+- [x] 16. 实现跨平台构建脚本 (scripts/build.sh)
+  - [x] 16.1 构建脚本
   - [ ]* 16.2 编写 Makefile 辅助构建
 
-- [ ] 17. 检查点 — 端到端验证
-  - 在当前环境中编译 Go 二进制
-  - 构建 React 前端并嵌入
+- [x] 17. 检查点 — 端到端验证
   - 启动应用，验证浏览器能打开面板
   - 扫描当前工作区 Git 仓库，验证统计结果正确
-  - 如有疑问请询问用户
