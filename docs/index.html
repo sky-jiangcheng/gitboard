@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#1a1a2e">
+  <meta name="description" content="Git Dashboard - 自动发现本地 Git 仓库并以可视化面板展示提交量统计。支持 Windows / macOS / Linux。">
+  <title>Git Dashboard - Git 代码提交统计面板</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f5f7fa; color: #333; line-height: 1.7;
+    }
+    .hero {
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+      color: #fff; padding: 80px 24px; text-align: center;
+    }
+    .hero h1 { font-size: 48px; font-weight: 800; margin-bottom: 16px; }
+    .hero h1 span { color: #4caf50; }
+    .hero p { font-size: 18px; color: #ccc; max-width: 600px; margin: 0 auto 32px; }
+    .hero .badge { display: inline-block; padding: 4px 12px; margin: 0 4px; border-radius: 4px; font-size: 12px; }
+    .badge-go { background: #00ADD8; color: #fff; }
+    .badge-react { background: #61DAFB; color: #000; }
+    .badge-sqlite { background: #003B57; color: #fff; }
+    .cta { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-top: 24px; }
+    .btn {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 12px 28px; border-radius: 8px; font-size: 16px; font-weight: 600;
+      text-decoration: none; transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .btn:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,0.3); }
+    .btn-primary { background: #4caf50; color: #fff; }
+    .btn-outline { border: 2px solid #fff; color: #fff; }
+    .section { max-width: 1100px; margin: 0 auto; padding: 64px 24px; }
+    .section h2 { font-size: 32px; text-align: center; margin-bottom: 40px; }
+    .features { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 24px; }
+    .feature-card {
+      background: #fff; border-radius: 12px; padding: 28px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06); transition: transform 0.2s;
+    }
+    .feature-card:hover { transform: translateY(-4px); }
+    .feature-card .icon { font-size: 36px; margin-bottom: 12px; }
+    .feature-card h3 { font-size: 18px; margin-bottom: 8px; }
+    .feature-card p { color: #666; font-size: 14px; }
+    .downloads { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; }
+    .download-card {
+      background: #fff; border-radius: 12px; padding: 24px; text-align: center;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    }
+    .download-card .os { font-size: 32px; margin-bottom: 8px; }
+    .download-card h4 { margin-bottom: 12px; }
+    .download-card .btn { font-size: 14px; padding: 8px 20px; }
+    .install-section { background: #1a1a2e; color: #fff; }
+    .install-section code {
+      display: block; background: #0d1117; color: #4caf50; padding: 16px;
+      border-radius: 8px; font-size: 14px; margin: 8px 0; overflow-x: auto;
+    }
+    footer {
+      text-align: center; padding: 32px; color: #888; font-size: 14px;
+      border-top: 1px solid #eee;
+    }
+    footer a { color: #4caf50; }
+    @media (max-width: 768px) {
+      .hero h1 { font-size: 32px; }
+      .features { grid-template-columns: 1fr; }
+      .downloads { grid-template-columns: 1fr 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+  <header class="hero">
+    <h1><span>Git</span> Dashboard</h1>
+    <p>自动发现本地所有 Git 仓库，以可视化面板独立展示每个项目的每日提交量</p>
+    <div>
+      <span class="badge badge-go">Go</span>
+      <span class="badge badge-react">React</span>
+      <span class="badge badge-sqlite">SQLite</span>
+    </div>
+    <div class="cta">
+      <a href="#download" class="btn btn-primary">下载应用</a>
+      <a href="https://github.com/sky-jiangcheng/CodeStat" class="btn btn-outline" target="_blank">GitHub</a>
+    </div>
+  </header>
+
+  <section class="section">
+    <h2>功能特性</h2>
+    <div class="features">
+      <div class="feature-card">
+        <div class="icon">&#x1F50D;</div>
+        <h3>自动发现仓库</h3>
+        <p>无需手动添加项目。设置扫描目录后自动递归发现所有 Git 仓库，支持 Windows/macOS/Linux 跨平台默认规则。</p>
+      </div>
+      <div class="feature-card">
+        <div class="icon">&#x1F4CA;</div>
+        <h3>可视化面板</h3>
+        <p>每个项目独立卡片展示提交量（新增/删除/净增行数）。趋势折线图追踪每日代码产出变化。</p>
+      </div>
+      <div class="feature-card">
+        <div class="icon">&#x1F4E6;</div>
+        <h3>智能项目分组</h3>
+        <p>自动识别 Monorepo 与单仓库项目。支持手动调整项目目录级别，灵活控制展示粒度。</p>
+      </div>
+      <div class="feature-card">
+        <div class="icon">&#x1F4C5;</div>
+        <h3>工作日检查</h3>
+        <p>自动区分工作日与周末。设定每日代码量标准，未达标时面板给出提醒。</p>
+      </div>
+      <div class="feature-card">
+        <div class="icon">&#x1F4BB;</div>
+        <h3>跨平台单文件</h3>
+        <p>Go 编译为单个二进制文件，无需运行时依赖。双击启动，自动打开浏览器访问面板。</p>
+      </div>
+      <div class="feature-card">
+        <div class="icon">&#x1F4E6;</div>
+        <h3>PWA 可安装</h3>
+        <p>支持 PWA，启动后可安装到桌面或移动设备主屏幕，获得原生应用般的使用体验。</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="download">
+    <h2>下载安装</h2>
+    <div class="downloads">
+      <div class="download-card">
+        <div class="os">&#x1F427;</div>
+        <h4>Windows</h4>
+        <p style="color:#666;font-size:13px;margin-bottom:12px">.exe 64-bit</p>
+        <a href="https://github.com/sky-jiangcheng/CodeStat/releases/latest/download/git-dashboard-windows-amd64.exe" class="btn btn-primary">下载 Windows</a>
+      </div>
+      <div class="download-card">
+        <div class="os">&#x1F34E;</div>
+        <h4>macOS</h4>
+        <p style="color:#666;font-size:13px;margin-bottom:12px">Intel + Apple Silicon</p>
+        <a href="https://github.com/sky-jiangcheng/CodeStat/releases/latest/download/git-dashboard-darwin-amd64" class="btn btn-primary">下载 macOS Intel</a>
+        <a href="https://github.com/sky-jiangcheng/CodeStat/releases/latest/download/git-dashboard-darwin-arm64" class="btn btn-primary" style="margin-top:8px">下载 macOS M 系列</a>
+      </div>
+      <div class="download-card">
+        <div class="os">&#x1F427;</div>
+        <h4>Linux</h4>
+        <p style="color:#666;font-size:13px;margin-bottom:12px">amd64</p>
+        <a href="https://github.com/sky-jiangcheng/CodeStat/releases/latest/download/git-dashboard-linux-amd64" class="btn btn-primary">下载 Linux</a>
+      </div>
+    </div>
+
+    <div class="install-section" style="border-radius:12px; margin-top:32px; padding:32px;">
+      <h3 style="margin-bottom:16px">命令行快速安装</h3>
+      <h4 style="margin-top:16px">macOS / Linux</h4>
+      <code>curl -fsSL https://raw.githubusercontent.com/sky-jiangcheng/CodeStat/master/scripts/install.sh | bash</code>
+      <h4 style="margin-top:16px">Windows (PowerShell)</h4>
+      <code>iwr -useb https://raw.githubusercontent.com/sky-jiangcheng/CodeStat/master/scripts/install.ps1 | iex</code>
+      <h4 style="margin-top:16px">手动安装</h4>
+      <p style="color:#ccc;font-size:14px">下载对应平台的二进制文件，赋予执行权限后直接运行即可。</p>
+      <code>chmod +x git-dashboard && ./git-dashboard</code>
+    </div>
+  </section>
+
+  <section class="section" style="padding-top:0">
+    <h2>使用说明</h2>
+    <div class="features">
+      <div class="feature-card">
+        <h3>1. 启动应用</h3>
+        <p>下载后双击运行，应用会自动打开浏览器访问本地面板（默认端口 18731）。</p>
+      </div>
+      <div class="feature-card">
+        <h3>2. 配置扫描目录</h3>
+        <p>首次启动使用平台默认规则。前往设置页面添加或修改扫描根目录。</p>
+      </div>
+      <div class="feature-card">
+        <h3>3. 查看统计</h3>
+        <p>仪表盘展示所有项目卡片。点击卡片进入详情页查看趋势图和子仓库明细。</p>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <p>Git Dashboard - MIT License</p>
+    <p><a href="https://github.com/sky-jiangcheng/CodeStat" target="_blank">GitHub</a></p>
+  </footer>
+
+</body>
+</html>
