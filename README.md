@@ -1,181 +1,110 @@
-# CodeStat - Git Commit Statistics Tool / Git 代码提交统计工具
+# Git Dashboard
 
-An efficient Git commit statistics tool that supports batch statistics of multiple repositories, helping developers track work progress and code contributions.
+自动发现本地所有 Git 仓库，以可视化 Web 面板独立展示每个项目的每日代码提交量。
 
-一个高效的 Git 代码提交统计工具，支持批量统计多个仓库的提交记录，帮助开发者跟踪工作进度和代码贡献。
+[![Go](https://img.shields.io/badge/Go-1.23+-00ADD8?logo=go)](https://go.dev)
+[![React](https://img.shields.io/badge/React-18-61DAFB?logo=react)](https://react.dev)
+[![PWA](https://img.shields.io/badge/PWA-Ready-5A0FC8?logo=pwa)](https://web.dev/progressive-web-apps/)
+[![License](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
 
-## Features / 功能特性
+## 截屏预览
 
-- 📊 **Batch Statistics**: Automatically scan and statistics multiple Git repositories
-  **批量统计**：自动扫描并统计多个 Git 仓库的提交记录
-- 👤 **Personal Contribution Tracking**: Distinguish between current user and other users' commits
-  **个人贡献追踪**：区分统计当前用户与其他用户的提交
-- 📅 **Flexible Date Range**: Support yesterday, today, or any specified date
-  **灵活的时间范围**：支持昨天、今天或指定任意日期
-- 🎯 **Workday Check**: Automatically identify workdays and weekends, set different code standards
-  **工作日检查**：自动识别工作日与周末，设置不同的代码量标准
-- ⚙️ **Configurable**: Support customization via configuration file for scan directories, depth, and code standards
-  **可配置**：支持通过配置文件自定义扫描目录、深度和代码量标准
-- 📈 **Visual Reports**: Provide clear statistical reports and completion progress
-  **可视化报告**：提供清晰的统计报告和完成进度
+![仪表盘首页](screenshots/dashboard.png)
 
-## Installation / 安装使用
+![项目详情](screenshots/project-detail.png)
 
-### Quick Start / 快速开始
+## 功能特性
 
-1. Clone or download the script / 克隆或下载脚本：
-```bash
-git clone <repository_url>
-cd CodeStat
-```
+| 特性 | 说明 |
+|------|------|
+| 自动发现仓库 | 设置扫描根目录后递归发现所有 Git 仓库，平台自适应默认规则 |
+| 可视化仪表盘 | 每个项目独立卡片展示新增/删除/净增行数，趋势折线图 |
+| 智能项目分组 | 自动识别 Monorepo 与单仓库，支持手动调整目录级别 |
+| 工作日检查 | 自定义每日代码量标准，未达标时面板告警提醒 |
+| 跨平台单文件 | Go 编译为单个二进制，无运行时依赖，双击即用 |
+| PWA 可安装 | 支持安装到桌面/主屏幕，获得原生应用体验 |
 
-2. Grant execution permissions / 赋予执行权限：
-```bash
-chmod +x statistics.sh
-```
+## 快速开始
 
-3. Run directly (statistics for yesterday)/ 直接运行（统计昨天的提交）：
-```bash
-./statistics.sh
-```
+### 下载安装
 
-### Usage Examples / 使用示例
+从 [Releases](https://github.com/sky-jiangcheng/CodeStat/releases) 下载对应平台的最新版本。
+
+| 平台 | 一键安装 |
+|------|---------|
+| macOS / Linux | `curl -fsSL https://raw.githubusercontent.com/sky-jiangcheng/CodeStat/master/scripts/install.sh \| bash` |
+| Windows | `iwr -useb https://raw.githubusercontent.com/sky-jiangcheng/CodeStat/master/scripts/install.ps1 \| iex` |
+
+### 手动使用
 
 ```bash
-# Statistics for yesterday (default) / 统计昨天的提交（默认）
-./statistics.sh
+# 下载后赋予执行权限
+chmod +x git-dashboard
 
-# Statistics for today / 统计今天的提交
-./statistics.sh today
-
-# Statistics for a specified date / 统计指定日期的提交
-./statistics.sh 2026-01-19
+# 直接运行
+./git-dashboard
 ```
 
-## Configuration / 配置说明
+启动后自动打开浏览器访问 `http://localhost:18731`，进入仪表盘。
 
-The script includes built-in default configurations. You can create a `.statistics.conf` file in the same directory as the script to override these defaults:
+### 配置
 
-脚本内置了默认配置。你可以在脚本同目录下创建 `.statistics.conf` 文件来覆盖这些默认值：
+首次启动使用平台默认扫描规则：
 
-### Default Configurations / 默认配置
+| 平台 | 默认扫描范围 |
+|------|-------------|
+| Windows | 除系统盘(C:)外的所有磁盘根目录 |
+| macOS | 当前用户 HOME 目录 |
+| Linux | 当前用户 HOME 目录 |
 
-- **SCAN_DIR**: `.` (current directory / 当前目录)
-- **SCAN_DEPTH**: `3` (scan up to 3 levels deep / 扫描3层深度)
-- **DAILY_CODE_STANDARD**: `500` (lines per workday / 每个工作日500行)
+在设置页面可修改扫描目录、代码量标准（默认 500 行/工作日）、扫描深度等。
 
-### Creating Configuration File / 创建配置文件
-
-Create a `.statistics.conf` file with the following format:
-
-创建 `.statistics.conf` 文件，格式如下：
+## 从源码构建
 
 ```bash
-# Scan directory (absolute or relative path) / 扫描目录（绝对路径或相对路径）
-SCAN_DIR="/path/to/projects"
+# 安装依赖
+cd web && npm install && cd ..
 
-# Scan depth (recursively find git repositories depth) / 扫描深度（递归查找 git 仓库的层数）
-SCAN_DEPTH=3
+# 构建前端
+cd web && npm run build && cd ..
 
-# Workday code standard (lines/day) / 工作日代码量标准（行/天）
-DAILY_CODE_STANDARD=500
+# 编译 Go 二进制
+go build -ldflags="-s -w" -o git-dashboard .
+
+# 或使用构建脚本
+bash scripts/build.sh
 ```
 
-**Note**: Only include the configuration items you want to override. Other values will use defaults.
+## 技术栈
 
-**注意**：只需包含想要覆盖的配置项，其他值将使用默认值。
+| 层 | 技术 |
+|----|------|
+| 后端 | Go + net/http + SQLite (modernc.org/sqlite, 零 CGO) |
+| 前端 | React 18 + TypeScript + Vite + Chart.js |
+| PWA | vite-plugin-pwa + Workbox |
+| 构建 | GitHub Actions 自动发布 Win/Mac/Linux 二进制 |
 
-### Configuration Options / 配置项说明
-
-- **SCAN_DIR**: Specify the root directory to scan. The script will recursively find all Git repositories under this directory.
-  **SCAN_DIR**：指定扫描的根目录，脚本会递归查找该目录下的所有 Git 仓库
-- **SCAN_DEPTH**: Control the depth of recursive search to avoid scanning too deep.
-  **SCAN_DEPTH**：控制递归查找的深度，避免扫描过深
-- **DAILY_CODE_STANDARD**: Expected daily code standard for workdays, not enforced on weekends.
-  **DAILY_CODE_STANDARD**：工作日每天期望的代码量标准，周末不强制要求
-
-## Sample Output / 统计输出示例
+## 项目结构
 
 ```
-Statistics Date: 2026-01-19 (Yesterday) / 统计日期: 2026-01-19 (昨天)
-Statistics User: John Doe / 统计用户: John Doe
-Scan Directory: /path/to/projects / 扫描目录: /path/to/projects
-Scan Depth: 3 levels / 扫描深度: 3 层
-Date Type: Workday (Code standard: 500 lines/day) / 日期类型: 工作日（代码量标准: 500 行/天）
-
-=== Statistics: project-1 === / === 正在统计: project-1 ===
-  File Changes: 12 (Mine: 8) / 文件变更: 12 (我的: 8)
-  Lines Added: 256 (Mine: 180) / 新增行数: 256 (我的: 180)
-  Lines Deleted: 45 (Mine: 30) / 删除行数: 45 (我的: 30)
-  Net Lines: 211 (Mine: 150) / 净增行数: 211 (我的: 150)
-
-==========================================
-Statistics Summary (2026-01-19) / 统计汇总 (2026-01-19)
-==========================================
-Repository Count: 3 / 仓库数量: 3
-------------------------------------------
-All Users Summary / 所有人汇总:
-  Total File Changes: 25 / 文件变更总数: 25
-  Total Lines Added: 520 / 新增行数总计: 520
-  Total Lines Deleted: 80 / 删除行数总计: 80
-  Total Net Lines: 440 / 净增行数总计: 440
-------------------------------------------
-John Doe's Contribution / John Doe 的贡献:
-  File Changes: 15 / 文件变更数: 15
-  Lines Added: 320 / 新增行数: 320
-  Lines Deleted: 50 / 删除行数: 50
-  Net Lines: 270 / 净增行数: 270
-  Percentage: 61.5% / 占比: 61.5%
-==========================================
-
-==========================================
-Workday Code Check (Yesterday) / 工作日代码量检查 (昨天)
-==========================================
-Standard Requirement: 500 lines per day / 标准要求: 每天 500 行代码
-Actual Commits: 320 lines / 实际提交: 320 行
-Completion Progress: 64.0% / 完成进度: 64.0%
-
-⚠️  Warning: Yesterday did not meet the workday code standard! / 警告: 昨天未达到工作日代码量标准！
-⚠️  Need to add: 180 lines of code / 还需要补充: 180 行代码
-⚠️  Please work hard to catch up! / 请努力赶上进度！
+├── main.go              # Go 程序入口
+├── internal/
+│   ├── platform/        # 平台检测、浏览器打开、默认扫描规则
+│   ├── db/              # SQLite 初始化和数据访问层
+│   ├── scanner/         # Git 仓库递归扫描引擎
+│   ├── stats/           # git log 统计引擎
+│   ├── grouper/         # 智能项目分组引擎
+│   └── server/          # HTTP API 服务和 REST 端点
+├── web/                 # React SPA 前端
+│   └── src/
+│       ├── pages/       # Dashboard / ProjectDetail / Settings
+│       ├── components/  # ProjectCard / SummaryBar / DatePicker / TrendChart
+│       └── api/         # API 客户端封装
+├── docs/                # GitHub Pages 落地页
+├── scripts/             # 构建和安装脚本
+└── .github/workflows/   # CI/CD 自动构建发布
 ```
 
-## How It Works / 工作原理
+## License
 
-1. Scan all `.git` folders under the specified directory (recursion depth configurable)
-   扫描指定目录下所有 `.git` 文件夹（递归深度可配置）
-2. Use `git log` command to statistics commit records within the specified date range
-   使用 `git log` 命令统计指定日期范围内的提交记录
-3. Parse commit statistics (lines added, lines deleted, file changes)
-   解析提交统计信息（新增行数、删除行数、文件变更数）
-4. Separately statistics contributions from all users and current git user (via `git config user.name`)
-   分别统计所有用户和当前 git 用户（通过 `git config user.name`）的贡献
-5. Generate summary report and check progress according to workday standards
-   汇总生成报告，并根据工作日标准进行进度检查
-
-## System Requirements / 系统要求
-
-- **Operating System / 操作系统**: Linux or macOS / Linux 或 macOS
-- **Dependencies / 依赖工具**:
-  - Bash shell
-  - Git
-  - Standard Unix tools like awk, date, etc. / awk、date 等标准 Unix 工具
-
-## Notes / 注意事项
-
-- The script identifies personal commits based on current git configuration (`git config user.name`)
-  脚本会根据当前 git 配置（`git config user.name`）识别个人提交
-- Configuration file priority: Configuration file > Default values
-  配置文件优先级：配置文件 > 默认值
-- No code quantity warnings on weekends (Saturday, Sunday)
-  周末（周六、周日）不进行代码量告警
-- Date format must be `YYYY-MM-DD`
-  日期格式必须为 `YYYY-MM-DD`
-
-## License / 许可证
-
-MIT License
-
-## Contributing / 贡献
-
-Issues and Pull Requests are welcome! / 欢迎提交 Issue 和 Pull Request！
+MIT
