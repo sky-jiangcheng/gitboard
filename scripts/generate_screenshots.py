@@ -132,7 +132,7 @@ def draw_dashboard():
     # Project cards grid
     mock_projects = [
         ("business-toolkit", 3, 420, 85, 335, 12, True),
-        ("CodeStat", 1, 180, 30, 150, 5, False),
+        ("GitBoard", 1, 180, 30, 150, 5, False),
         ("user-service", 2, 0, 0, 0, 0, True),
         ("api-gateway", 1, 95, 12, 83, 3, False),
         ("data-platform", 4, 0, 0, 0, 0, True),
