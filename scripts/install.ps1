@@ -3,7 +3,7 @@
 
 $ErrorActionPreference = "Stop"
 
-$InstallDir = "$env:LOCALAPPDATA\GitDashboard"
+$InstallDir = "$env:LOCALAPPDATA\GitBoard"
 $BinaryName = "gitboard.exe"
 $Repo = "sky-jiangcheng/gitboard"
 $Target = "windows-amd64"

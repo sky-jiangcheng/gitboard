@@ -111,7 +111,7 @@ func GetGitUserName() string {
 func GetDbPath() string {
 	configDir, err := os.UserConfigDir()
 	if err != nil {
-		configDir = filepath.Join(os.TempDir(), "git-dashboard")
+		configDir = filepath.Join(os.TempDir(), "gitboard")
 	}
 	dir := filepath.Join(configDir, "gitboard")
 	if err := os.MkdirAll(dir, 0750); err != nil {

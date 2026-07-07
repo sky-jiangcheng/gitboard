@@ -56,13 +56,13 @@ jobs:
           GOOS: ${{ fromJson('{"ubuntu-latest":"linux","macos-latest":"darwin","windows-latest":"windows"}')[matrix.os] }}
           GOARCH: ${{ matrix.arch }}
         run: |
-          go build -ldflags="-s -w" -o git-dashboard${{ matrix.extension || '' }} .
+          go build -ldflags="-s -w" -o gitboard${{ matrix.extension || '' }} .
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: git-dashboard-${{ matrix.target }}
-          path: git-dashboard${{ matrix.extension || '' }}
+          name: gitboard-${{ matrix.target }}
+          path: gitboard${{ matrix.extension || '' }}
 
   release:
     name: Create Release
@@ -76,17 +76,17 @@ jobs:
 
       - name: Rename Files
         run: |
-          mv git-dashboard-linux-amd64/git-dashboard git-dashboard-linux-amd64
-          mv git-dashboard-darwin-amd64/git-dashboard git-dashboard-darwin-amd64
-          mv git-dashboard-darwin-arm64/git-dashboard git-dashboard-darwin-arm64
-          mv git-dashboard-windows-amd64/git-dashboard.exe git-dashboard-windows-amd64.exe
+          mv gitboard-linux-amd64/gitboard gitboard-linux-amd64
+          mv gitboard-darwin-amd64/gitboard gitboard-darwin-amd64
+          mv gitboard-darwin-arm64/gitboard gitboard-darwin-arm64
+          mv gitboard-windows-amd64/gitboard.exe gitboard-windows-amd64.exe
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            git-dashboard-linux-amd64
-            git-dashboard-darwin-amd64
-            git-dashboard-darwin-arm64
-            git-dashboard-windows-amd64.exe
+            gitboard-linux-amd64
+            gitboard-darwin-amd64
+            gitboard-darwin-arm64
+            gitboard-windows-amd64.exe
           generate_release_notes: true
