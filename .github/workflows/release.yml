@@ -62,7 +62,7 @@ jobs:
         shell: bash
         run: |
           if [ "${{ matrix.target }}" = "windows-amd64" ]; then
-            zip gitboard-${{ matrix.target }}.zip gitboard.exe
+            powershell Compress-Archive -Path gitboard.exe -DestinationPath gitboard-${{ matrix.target }}.zip
           else
             tar -czf gitboard-${{ matrix.target }}.tar.gz gitboard
           fi
