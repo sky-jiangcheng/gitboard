@@ -6,30 +6,44 @@ on:
       - 'v*'
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: write
-  packages: write
+
+env:
+  CARGO_TERM_COLOR: always
 
 jobs:
   build:
-    name: Build ${{ matrix.os }} (${{ matrix.arch }})
-    runs-on: ${{ matrix.os }}
+    name: ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
     strategy:
+      fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
-            arch: amd64
-            target: linux-amd64
-          - os: macos-13  # x86_64
-            arch: amd64
-            target: darwin-amd64
-          - os: macos-latest  # arm64
-            arch: arm64
-            target: darwin-arm64
-          - os: windows-latest
-            arch: amd64
-            target: windows-amd64
-            extension: .exe
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-latest
+            goos: linux
+            goarch: amd64
+            ext: ""
+          - target: x86_64-apple-darwin
+            runner: macos-13
+            goos: darwin
+            goarch: amd64
+            ext: ""
+          - target: aarch64-apple-darwin
+            runner: macos-latest
+            goos: darwin
+            goarch: arm64
+            ext: ""
+          - target: x86_64-pc-windows-msvc
+            runner: windows-latest
+            goos: windows
+            goarch: amd64
+            ext: .exe
 
     steps:
       - name: Checkout
@@ -45,98 +59,68 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf
+
+      - name: Build Go sidecar binary
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          mkdir -p src-tauri/binaries
+          go build -ldflags="-s -w" \
+            -o "src-tauri/binaries/gitboard-${{ matrix.target }}${{ matrix.ext }}" .
+
       - name: Build Frontend
         run: |
           cd web
           npm ci
           npm run build
 
-      - name: Build Go Backend
-        env:
-          GOOS: ${{ fromJson('{"ubuntu-latest":"linux","macos-13":"darwin","macos-latest":"darwin","windows-latest":"windows"}')[matrix.os] }}
-          GOARCH: ${{ matrix.arch }}
-        run: |
-          mkdir -p src-tauri/bin
-          go build -ldflags="-s -w" -o src-tauri/bin/gitboard${{ matrix.extension || '' }} .
+      - name: Setup Rust target
+        run: rustup target add ${{ matrix.target }}
 
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
+      - name: Build Tauri app
+        run: cargo tauri build --target ${{ matrix.target }}
 
-      - name: Cache cargo
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: src-tauri -> target
-
-      - name: Build Tauri App
-        env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        run: |
-          cd src-tauri
-          cargo tauri build --bundles app,dmg,msi,deb,appimage
-
-      - name: Upload Artifact (Linux)
-        if: startsWith(matrix.target, 'linux')
+      - name: Upload bundle artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: gitboard-${{ matrix.target }}
-          path: |
-            src-tauri/target/release/gitboard
-            src-tauri/target/release/bundle/deb/*.deb
-            src-tauri/target/release/bundle/appimage/*.AppImage
+          name: bundle-${{ matrix.target }}
+          path: src-tauri/target/${{ matrix.target }}/release/bundle/
+          if-no-files-found: error
 
-      - name: Upload Artifact (macOS)
-        if: startsWith(matrix.target, 'darwin')
-        uses: actions/upload-artifact@v4
-        with:
-          name: gitboard-${{ matrix.target }}
-          path: |
-            src-tauri/target/release/gitboard
-            src-tauri/target/release/bundle/macos/*.dmg
-            src-tauri/target/release/bundle/macos/*.app
-
-      - name: Upload Artifact (Windows)
-        if: startsWith(matrix.target, 'windows')
-        uses: actions/upload-artifact@v4
-        with:
-          name: gitboard-${{ matrix.target }}
-          path: |
-            src-tauri/target/release/gitboard.exe
-            src-tauri/target/release/bundle/msi/*.msi
-            src-tauri/target/release/bundle/nsis/*.exe
-
-  release:
-    name: Create Release
+  create-release:
+    name: Create GitHub Release
     needs: build
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
 
     steps:
-      - name: Download Artifacts
+      - name: Download all bundles
         uses: actions/download-artifact@v4
+        with:
+          pattern: bundle-*
+          merge-multiple: true
 
-      - name: Prepare Release Files
-        run: |
-          set -e
-          # Flatten artifacts
-          for d in gitboard-*; do
-            if [ -d "$d" ]; then
-              cp -r "$d"/* . 2>/dev/null || true
-              rm -rf "$d"
-            fi
-          done
-          echo "Release files:"
-          ls -lh gitboard-* 2>/dev/null || ls -lh
+      - name: List release files
+        run: ls -lhR
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            *.dmg
-            *.deb
-            *.AppImage
-            *.msi
-            *.exe
-            gitboard
-            gitboard.exe
+            **/*.dmg
+            **/*.AppImage
+            **/*.deb
+            **/*.msi
+            **/*.zip
+            **/*.tar.gz
           generate_release_notes: true

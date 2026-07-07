@@ -1,4 +1,4 @@
-name: Build and Release
+name: Build and Release (Tauri)
 
 on:
   push:
@@ -6,30 +6,44 @@ on:
       - 'v*'
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: write
-  packages: write
+
+env:
+  CARGO_TERM_COLOR: always
 
 jobs:
   build:
-    name: Build ${{ matrix.os }} (${{ matrix.arch }})
-    runs-on: ${{ matrix.os }}
+    name: ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
     strategy:
+      fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
-            arch: amd64
-            target: linux-amd64
-          - os: macos-latest
-            arch: amd64
-            target: darwin-amd64
-          - os: macos-latest
-            arch: arm64
-            target: darwin-arm64
-          - os: windows-latest
-            arch: amd64
-            target: windows-amd64
-            extension: .exe
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-latest
+            goos: linux
+            goarch: amd64
+            ext: ""
+          - target: x86_64-apple-darwin
+            runner: macos-13
+            goos: darwin
+            goarch: amd64
+            ext: ""
+          - target: aarch64-apple-darwin
+            runner: macos-latest
+            goos: darwin
+            goarch: arm64
+            ext: ""
+          - target: x86_64-pc-windows-msvc
+            runner: windows-latest
+            goos: windows
+            goarch: amd64
+            ext: .exe
 
     steps:
       - name: Checkout
@@ -45,191 +59,68 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf
+
+      - name: Build Go sidecar binary
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          mkdir -p src-tauri/binaries
+          go build -ldflags="-s -w" \
+            -o "src-tauri/binaries/gitboard-${{ matrix.target }}${{ matrix.ext }}" .
+
       - name: Build Frontend
         run: |
           cd web
           npm ci
           npm run build
 
-      - name: Build Go Binary
-        env:
-          GOOS: ${{ fromJson('{"ubuntu-latest":"linux","macos-latest":"darwin","windows-latest":"windows"}')[matrix.os] }}
-          GOARCH: ${{ matrix.arch }}
-        run: |
-          go build -ldflags="-s -w" -o gitboard${{ matrix.extension || '' }} .
+      - name: Setup Rust target
+        run: rustup target add ${{ matrix.target }}
 
-      - name: Create macOS App Bundle and DMG
-        if: startsWith(matrix.target, 'darwin')
-        shell: bash
-        run: |
-          VERSION="${{ github.ref_name }}"
-          APP_NAME="GitBoard"
+      - name: Build Tauri app
+        run: cargo tauri build --target ${{ matrix.target }}
 
-          # Generate .icns from PWA icon
-          mkdir -p "${APP_NAME}.iconset"
-          ICON_SRC="web/public/icon-512.png"
-          sips -z 16 16   "${ICON_SRC}" --out "${APP_NAME}.iconset/icon_16x16.png"
-          sips -z 32 32   "${ICON_SRC}" --out "${APP_NAME}.iconset/icon_16x16@2x.png"
-          sips -z 32 32   "${ICON_SRC}" --out "${APP_NAME}.iconset/icon_32x32.png"
-          sips -z 64 64   "${ICON_SRC}" --out "${APP_NAME}.iconset/icon_32x32@2x.png"
-          sips -z 128 128 "${ICON_SRC}" --out "${APP_NAME}.iconset/icon_128x128.png"
-          sips -z 256 256 "${ICON_SRC}" --out "${APP_NAME}.iconset/icon_128x128@2x.png"
-          sips -z 256 256 "${ICON_SRC}" --out "${APP_NAME}.iconset/icon_256x256.png"
-          sips -z 512 512 "${ICON_SRC}" --out "${APP_NAME}.iconset/icon_256x256@2x.png"
-          sips -z 512 512 "${ICON_SRC}" --out "${APP_NAME}.iconset/icon_512x512.png"
-          iconutil -c icns "${APP_NAME}.iconset" -o "${APP_NAME}.icns"
-          rm -rf "${APP_NAME}.iconset"
-
-          # Create .app bundle structure
-          mkdir -p "${APP_NAME}.app/Contents/MacOS"
-          mkdir -p "${APP_NAME}.app/Contents/Resources"
-
-          # Copy binary
-          cp gitboard "${APP_NAME}.app/Contents/MacOS/gitboard"
-          chmod +x "${APP_NAME}.app/Contents/MacOS/gitboard"
-
-          # Copy icon
-          cp "${APP_NAME}.icns" "${APP_NAME}.app/Contents/Resources/"
-
-          # Create Info.plist
-          cat > "${APP_NAME}.app/Contents/Info.plist" << 'PLISTEOF'
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-              <key>CFBundleExecutable</key>
-              <string>gitboard</string>
-              <key>CFBundleIconFile</key>
-              <string>GitBoard</string>
-              <key>CFBundleIdentifier</key>
-              <string>com.gitboard.app</string>
-              <key>CFBundleName</key>
-              <string>GitBoard</string>
-              <key>CFBundleDisplayName</key>
-              <string>GitBoard</string>
-              <key>CFBundleVersion</key>
-              <string>PLISTEOF
-          echo "              <string>${VERSION#v}</string>" >> "${APP_NAME}.app/Contents/Info.plist"
-          cat >> "${APP_NAME}.app/Contents/Info.plist" << 'PLISTEOF'
-              </string>
-              <key>CFBundleShortVersionString</key>
-              <string>PLISTEOF
-          echo "              <string>${VERSION#v}</string>" >> "${APP_NAME}.app/Contents/Info.plist"
-          cat >> "${APP_NAME}.app/Contents/Info.plist" << 'PLISTEOF'
-              </string>
-              <key>CFBundlePackageType</key>
-              <string>APPL</string>
-              <key>CFBundleInfoDictionaryVersion</key>
-              <string>6.0</string>
-              <key>LSMinimumSystemVersion</key>
-              <string>10.15</string>
-              <key>LSUIElement</key>
-              <true/>
-              <key>NSHighResolutionCapable</key>
-              <true/>
-          </dict>
-          </plist>
-          PLISTEOF
-
-          # Prepare DMG staging directory
-          STAGING_DIR="${APP_NAME}-staging"
-          mkdir -p "${STAGING_DIR}"
-
-          # Move .app bundle into staging
-          mv "${APP_NAME}.app" "${STAGING_DIR}/"
-
-          # --- ① /Applications drag-to-install symlink ---
-          ln -s /Applications "${STAGING_DIR}/Applications"
-
-          # --- ② Volume icon (reuse app icon) ---
-          cp "${APP_NAME}.icns" "${STAGING_DIR}/.VolumeIcon.icns"
-
-          # Create DMG from staging directory
-          # SetFile to mark volume icon is not available on CI, but the icon file
-          # presence alone is enough for DMG to pick it up on first mount
-          DMG_NAME="gitboard-${{ matrix.target }}.dmg"
-          hdiutil create -volname "${APP_NAME}" \
-            -srcfolder "${STAGING_DIR}" \
-            -ov -format UDZO \
-            "${DMG_NAME}"
-
-          # Cleanup staging
-          rm -rf "${STAGING_DIR}"
-
-          # Also create tarball for CLI users
-          tar -czf "gitboard-${{ matrix.target }}.tar.gz" gitboard
-
-          # Verify
-          echo "Created:"
-          ls -lh "${DMG_NAME}" "gitboard-${{ matrix.target }}.tar.gz"
-
-      - name: Package Linux Binary
-        if: startsWith(matrix.target, 'linux')
-        shell: bash
-        run: |
-          tar -czf gitboard-${{ matrix.target }}.tar.gz gitboard
-
-      - name: Package Windows Binary
-        if: startsWith(matrix.target, 'windows')
-        shell: bash
-        run: |
-          powershell Compress-Archive -Path gitboard.exe -DestinationPath gitboard-${{ matrix.target }}.zip
-
-      - name: Upload Artifact (Linux/Windows)
-        if: ${{ !startsWith(matrix.target, 'darwin') }}
+      - name: Upload bundle artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: gitboard-${{ matrix.target }}
-          path: gitboard-${{ matrix.target }}.${{ startsWith(matrix.target, 'linux') && 'tar.gz' || 'zip' }}
+          name: bundle-${{ matrix.target }}
+          path: src-tauri/target/${{ matrix.target }}/release/bundle/
+          if-no-files-found: error
 
-      - name: Upload Artifact (macOS)
-        if: startsWith(matrix.target, 'darwin')
-        uses: actions/upload-artifact@v4
-        with:
-          name: gitboard-${{ matrix.target }}
-          path: |
-            gitboard-${{ matrix.target }}.tar.gz
-            gitboard-${{ matrix.target }}.dmg
-
-  release:
-    name: Create Release
+  create-release:
+    name: Create GitHub Release
     needs: build
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
 
     steps:
-      - name: Download Artifacts
+      - name: Download all bundles
         uses: actions/download-artifact@v4
+        with:
+          pattern: bundle-*
+          merge-multiple: true
 
-      - name: Prepare Release Files
-        run: |
-          # Linux
-          mv gitboard-linux-amd64/gitboard-linux-amd64.tar.gz . && rm -rf gitboard-linux-amd64
-
-          # macOS Intel
-          mv gitboard-darwin-amd64/gitboard-darwin-amd64.tar.gz . || true
-          mv gitboard-darwin-amd64/gitboard-darwin-amd64.dmg . || true
-          rm -rf gitboard-darwin-amd64
-
-          # macOS ARM
-          mv gitboard-darwin-arm64/gitboard-darwin-arm64.tar.gz . || true
-          mv gitboard-darwin-arm64/gitboard-darwin-arm64.dmg . || true
-          rm -rf gitboard-darwin-arm64
-
-          # Windows
-          mv gitboard-windows-amd64/gitboard-windows-amd64.zip . && rm -rf gitboard-windows-amd64
-
-          echo "Release files:"
-          ls -lh gitboard-*
+      - name: List release files
+        run: ls -lhR
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            gitboard-linux-amd64.tar.gz
-            gitboard-darwin-amd64.tar.gz
-            gitboard-darwin-amd64.dmg
-            gitboard-darwin-arm64.tar.gz
-            gitboard-darwin-arm64.dmg
-            gitboard-windows-amd64.zip
+            **/*.dmg
+            **/*.AppImage
+            **/*.deb
+            **/*.msi
+            **/*.zip
+            **/*.tar.gz
           generate_release_notes: true
