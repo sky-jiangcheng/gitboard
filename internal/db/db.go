@@ -17,23 +17,23 @@ func InitDB(dbPath string) (*sql.DB, error) {
 
 	// Enable WAL mode for better concurrent read performance
 	if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
-		db.Close()
+		db.Close() //nolint:errcheck // close on init failure, error irrelevant
 		return nil, fmt.Errorf("failed to set WAL mode: %w", err)
 	}
 
 	// Enable foreign keys
 	if _, err := db.Exec("PRAGMA foreign_keys=ON"); err != nil {
-		db.Close()
+		db.Close() //nolint:errcheck
 		return nil, fmt.Errorf("failed to enable foreign keys: %w", err)
 	}
 
 	if err := createTables(db); err != nil {
-		db.Close()
+		db.Close() //nolint:errcheck
 		return nil, fmt.Errorf("failed to create tables: %w", err)
 	}
 
 	if err := insertDefaults(db); err != nil {
-		db.Close()
+		db.Close() //nolint:errcheck
 		return nil, fmt.Errorf("failed to insert defaults: %w", err)
 	}
 

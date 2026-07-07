@@ -1,4 +1,4 @@
-module git-dashboard
+module gitboard
 
 go 1.25.6
 

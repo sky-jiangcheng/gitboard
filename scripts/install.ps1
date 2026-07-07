@@ -1,15 +1,15 @@
-# Git Dashboard install script for Windows
+# GitBoard install script for Windows
 # Run in PowerShell: iwr -useb https://raw.githubusercontent.com/sky-jiangcheng/CodeStat/master/scripts/install.ps1 | iex
 
 $ErrorActionPreference = "Stop"
 
 $InstallDir = "$env:LOCALAPPDATA\GitDashboard"
-$BinaryName = "git-dashboard.exe"
+$BinaryName = "gitboard.exe"
 $Repo = "sky-jiangcheng/CodeStat"
 $Target = "windows-amd64"
 
-Write-Host "Downloading Git Dashboard for Windows..."
-$DownloadUrl = "https://github.com/$Repo/releases/latest/download/git-dashboard-$Target.exe"
+Write-Host "Downloading GitBoard for Windows..."
+$DownloadUrl = "https://github.com/$Repo/releases/latest/download/gitboard-$Target.exe"
 
 New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
 
@@ -23,7 +23,7 @@ if ($UserPath -notlike "*$InstallDir*") {
 }
 
 Write-Host ""
-Write-Host "Git Dashboard installed to $InstallDir"
-Write-Host "Run 'git-dashboard' in a new terminal to start!"
+Write-Host "GitBoard installed to $InstallDir"
+Write-Host "Run 'gitboard' in a new terminal to start!"
 Write-Host ""
 Write-Host "You can also create a desktop shortcut to: $InstallDir\$BinaryName"

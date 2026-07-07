@@ -1,9 +1,9 @@
 #!/bin/bash
-# Git Dashboard install script for macOS and Linux
+# GitBoard install script for macOS and Linux
 set -e
 
 INSTALL_DIR="/usr/local/bin"
-BINARY_NAME="git-dashboard"
+BINARY_NAME="gitboard"
 REPO="sky-jiangcheng/CodeStat"
 
 OS=$(uname -s | tr '[:upper:]' '[:lower:]')
@@ -27,9 +27,9 @@ case "$OS" in
   *) echo "Unsupported OS: $OS"; exit 1 ;;
 esac
 
-echo "Downloading Git Dashboard for $TARGET..."
+echo "Downloading GitBoard for $TARGET..."
 
-DOWNLOAD_URL="https://github.com/$REPO/releases/latest/download/git-dashboard-$TARGET"
+DOWNLOAD_URL="https://github.com/$REPO/releases/latest/download/gitboard-$TARGET"
 
 if [ ! -w "$INSTALL_DIR" ]; then
   echo "Need sudo to install to $INSTALL_DIR"
@@ -41,5 +41,5 @@ else
 fi
 
 echo ""
-echo "Git Dashboard installed to $INSTALL_DIR/$BINARY_NAME"
-echo "Run 'git-dashboard' to start!"
+echo "GitBoard installed to $INSTALL_DIR/$BINARY_NAME"
+echo "Run 'gitboard' to start!"

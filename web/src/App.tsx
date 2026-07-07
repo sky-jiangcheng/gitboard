@@ -8,7 +8,7 @@ function App() {
     <BrowserRouter>
       <div className="app">
         <nav className="navbar">
-          <Link to="/" className="nav-brand">Git Dashboard</Link>
+          <Link to="/" className="nav-brand">GitBoard</Link>
           <div className="nav-links">
             <Link to="/">仪表盘</Link>
             <Link to="/settings">设置</Link>

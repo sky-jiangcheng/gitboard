@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -19,9 +20,50 @@ type Result struct {
 // QueryTimeout is the maximum time allowed for a single git log query.
 const QueryTimeout = 30 * time.Second
 
+// datePattern validates YYYY-MM-DD format.
+var datePattern = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
+
+// safeAuthorPattern allows only safe characters for git author matching.
+// Allowed: letters, digits, space, dot, underscore, hyphen, at-sign.
+var safeAuthorPattern = regexp.MustCompile(`^[a-zA-Z0-9 ._\-@]+$`)
+
+// ValidateDate checks that the date string matches YYYY-MM-DD format.
+func ValidateDate(date string) error {
+	if !datePattern.MatchString(date) {
+		return fmt.Errorf("invalid date format: %s (expected YYYY-MM-DD)", date)
+	}
+	t, err := time.Parse("2006-01-02", date)
+	if err != nil {
+		return fmt.Errorf("invalid date: %s", date)
+	}
+	// Ensure the parsed date matches the input (catches things like "0000-00-00")
+	if t.Format("2006-01-02") != date {
+		return fmt.Errorf("invalid date: %s", date)
+	}
+	return nil
+}
+
+// ValidateAuthor checks that the author string contains only safe characters.
+func ValidateAuthor(author string) error {
+	if author == "" {
+		return nil
+	}
+	if !safeAuthorPattern.MatchString(author) {
+		return fmt.Errorf("invalid author name: contains unsafe characters")
+	}
+	return nil
+}
+
 // QueryStats runs git log --shortstat for the given repository, date, and optional author.
-// Returns aggregated statistics.
+// Returns aggregated statistics. All user-supplied parameters are validated.
 func QueryStats(repoPath, date, author string) (*Result, error) {
+	if err := ValidateDate(date); err != nil {
+		return nil, err
+	}
+	if err := ValidateAuthor(author); err != nil {
+		return nil, err
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), QueryTimeout)
 	defer cancel()
 
@@ -38,16 +80,15 @@ func QueryStats(repoPath, date, author string) (*Result, error) {
 		args = append(args, "--author="+author)
 	}
 
+	//nolint:gosec // date and author are validated by ValidateDate/ValidateAuthor above
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = repoPath
 
 	out, err := cmd.Output()
 	if err != nil {
-		// If no commits, git returns empty output but may exit with non-zero
 		if ctx.Err() == context.DeadlineExceeded {
 			return nil, fmt.Errorf("query timed out after %v", QueryTimeout)
 		}
-		// Empty repo or no commits is not an error
 		return &Result{}, nil
 	}
 
@@ -56,12 +97,16 @@ func QueryStats(repoPath, date, author string) (*Result, error) {
 
 // QueryMultiBranch runs QueryStats for multiple branches and aggregates results.
 func QueryMultiBranch(repoPath, date string, branches []string) (*Result, error) {
+	if err := ValidateDate(date); err != nil {
+		return nil, err
+	}
+
 	result := &Result{}
-	seen := make(map[string]bool) // deduplicate by commit hash
+	seen := make(map[string]bool)
 
 	for _, branch := range branches {
 		branch = strings.TrimSpace(branch)
-		if branch == "" {
+		if branch == "" || !isSafeRefName(branch) {
 			continue
 		}
 
@@ -70,7 +115,6 @@ func QueryMultiBranch(repoPath, date string, branches []string) (*Result, error)
 			continue
 		}
 
-		// Check for commit uniqueness by hash
 		for _, hash := range r.commits {
 			if !seen[hash] {
 				seen[hash] = true
@@ -92,8 +136,26 @@ type branchResult struct {
 	commits      []string
 }
 
+// safeRefPattern allows safe git ref names (branches, tags).
+var safeRefPattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._/\-]*$`)
+
+// isSafeRefName checks that a git ref name contains only safe characters.
+func isSafeRefName(ref string) bool {
+	if len(ref) == 0 || len(ref) > 255 {
+		return false
+	}
+	return safeRefPattern.MatchString(ref)
+}
+
 // QueryStatsForBranch queries stats for a specific branch.
 func QueryStatsForBranch(repoPath, date, branch string) (*branchResult, error) {
+	if err := ValidateDate(date); err != nil {
+		return nil, err
+	}
+	if !isSafeRefName(branch) {
+		return nil, fmt.Errorf("invalid branch name")
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), QueryTimeout)
 	defer cancel()
 
@@ -106,6 +168,7 @@ func QueryStatsForBranch(repoPath, date, branch string) (*branchResult, error) {
 		"--shortstat",
 	}
 
+	//nolint:gosec // date and branch are validated by ValidateDate/isSafeRefName above
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = repoPath
 
@@ -121,10 +184,6 @@ func QueryStatsForBranch(repoPath, date, branch string) (*branchResult, error) {
 }
 
 // parseShortStat parses git log --shortstat output into a Result.
-// Output format:
-//
-//	3 files changed, 15 insertions(+), 8 deletions(-)
-//	1 file changed, 5 insertions(+)
 func parseShortStat(output string) (*Result, error) {
 	result := &Result{}
 	lines := strings.Split(output, "\n")
@@ -135,7 +194,6 @@ func parseShortStat(output string) (*Result, error) {
 			continue
 		}
 
-		// Skip commit hash lines and blank lines
 		if len(line) == 40 && isHex(line) {
 			continue
 		}
@@ -160,7 +218,6 @@ func parseShortStatWithCommits(output string) (*branchResult, error) {
 			continue
 		}
 
-		// If it's a commit hash (40 hex chars), collect it
 		if len(line) == 40 && isHex(line) {
 			result.commits = append(result.commits, line)
 			continue
@@ -175,8 +232,7 @@ func parseShortStatWithCommits(output string) (*branchResult, error) {
 	return result, nil
 }
 
-// parseStatLine parses a single shortstat line like:
-// "3 files changed, 15 insertions(+), 8 deletions(-)"
+// parseStatLine parses a single shortstat line.
 func parseStatLine(line string) (files, added, deleted int) {
 	parts := strings.Split(line, ",")
 	for _, part := range parts {
@@ -205,7 +261,6 @@ func parseStatLine(line string) (files, added, deleted int) {
 	return
 }
 
-// isHex checks if a string contains only hexadecimal characters.
 func isHex(s string) bool {
 	for _, c := range s {
 		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
@@ -215,21 +270,18 @@ func isHex(s string) bool {
 	return true
 }
 
-// GetTodayDate returns today's date in YYYY-MM-DD format.
 func GetTodayDate() string {
 	return time.Now().Format("2006-01-02")
 }
 
-// GetYesterdayDate returns yesterday's date in YYYY-MM-DD format.
 func GetYesterdayDate() string {
 	return time.Now().AddDate(0, 0, -1).Format("2006-01-02")
 }
 
-// IsWorkday returns true if the given date (YYYY-MM-DD) is a weekday (Mon-Fri).
 func IsWorkday(date string) bool {
 	t, err := time.Parse("2006-01-02", date)
 	if err != nil {
-		return true // assume workday on error
+		return true
 	}
 	day := t.Weekday()
 	return day != time.Saturday && day != time.Sunday

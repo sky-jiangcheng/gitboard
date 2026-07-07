@@ -2,6 +2,7 @@ package platform
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -65,15 +66,22 @@ func getWindowsDrives() []string {
 }
 
 // OpenBrowser opens the specified URL in the system's default browser.
-func OpenBrowser(url string) error {
+// Only http:// and https:// URLs are allowed for security.
+func OpenBrowser(rawURL string) error {
+	parsed, err := url.Parse(rawURL)
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		return fmt.Errorf("invalid browser URL: %s", rawURL)
+	}
+
 	var cmd *exec.Cmd
+	//nolint:gosec // rawURL has been validated above - only http/https schemes allowed
 	switch runtime.GOOS {
 	case "windows":
-		cmd = exec.Command("cmd", "/c", "start", url)
+		cmd = exec.Command("cmd", "/c", "start", rawURL)
 	case "darwin":
-		cmd = exec.Command("open", url)
+		cmd = exec.Command("open", rawURL)
 	default: // linux and others
-		cmd = exec.Command("xdg-open", url)
+		cmd = exec.Command("xdg-open", rawURL)
 	}
 	return cmd.Start()
 }
@@ -105,16 +113,16 @@ func GetDbPath() string {
 	if err != nil {
 		configDir = filepath.Join(os.TempDir(), "git-dashboard")
 	}
-	dir := filepath.Join(configDir, "git-dashboard")
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return filepath.Join(os.TempDir(), "git-dashboard.db")
+	dir := filepath.Join(configDir, "gitboard")
+	if err := os.MkdirAll(dir, 0750); err != nil {
+		return filepath.Join(os.TempDir(), "gitboard.db")
 	}
 	return filepath.Join(dir, "dashboard.db")
 }
 
 // GetPort returns the server port from environment or a random available port.
 func GetPort() string {
-	if port := os.Getenv("GIT_DASHBOARD_PORT"); port != "" {
+	if port := os.Getenv("GITBOARD_PORT"); port != "" {
 		return port
 	}
 	return "18731"

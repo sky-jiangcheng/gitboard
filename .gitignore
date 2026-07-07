@@ -9,8 +9,14 @@
 *.tmp
 *.swp
 
-# Git Dashboard binary
+# GitBoard binary
+gitboard
 git-dashboard
+
+# Database files
+*.db
+*.db-shm
+*.db-wal
 
 # Node
 web/node_modules/

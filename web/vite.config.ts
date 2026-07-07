@@ -9,7 +9,7 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg'],
       manifest: {
-        name: 'Git Dashboard',
+        name: 'GitBoard',
         short_name: 'GitDash',
         description: 'Git 代码提交统计面板 - 自动发现本地项目并可视化展示提交量',
         theme_color: '#1a1a2e',

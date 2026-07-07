@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-echo "=== Git Dashboard Build Script ==="
+echo "=== GitBoard Build Script ==="
 echo ""
 
 # Step 1: Build frontend
@@ -14,9 +14,9 @@ echo "  Frontend built to web/dist/"
 # Step 2: Build Go binary
 echo "[2/2] Building Go binary..."
 cd "$(dirname "$0")/.."
-go build -ldflags="-s -w" -o git-dashboard .
-echo "  Binary: $(pwd)/git-dashboard"
+go build -ldflags="-s -w" -o gitboard .
+echo "  Binary: $(pwd)/gitboard"
 
 echo ""
 echo "=== Build complete ==="
-ls -lh git-dashboard
+ls -lh gitboard

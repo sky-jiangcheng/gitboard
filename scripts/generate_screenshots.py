@@ -37,7 +37,7 @@ def draw_navbar(draw):
     draw.rectangle([(0, 0), (WIDTH, 56)], fill=NAV_BG)
     font_brand = get_font(18, bold=True)
     font_link = get_font(14)
-    draw.text((24, 16), "Git Dashboard", fill=WHITE, font=font_brand)
+    draw.text((24, 16), "GitBoard", fill=WHITE, font=font_brand)
     draw.text((WIDTH - 180, 18), "仪表盘", fill=(200, 200, 200), font=font_link)
     draw.text((WIDTH - 90, 18), "设置", fill=(200, 200, 200), font=font_link)
 

@@ -36,12 +36,16 @@ function ProjectDetailPage() {
 
   // Prepare trend data from daily stats
   const trendData = new Map<string, number>()
-  project.repos.forEach((repo) => {
-    repo.stats.forEach((stat) => {
-      const existing = trendData.get(stat.stat_date) || 0
-      trendData.set(stat.stat_date, existing + stat.lines_added)
+  if (project.repos) {
+    project.repos.forEach((repo) => {
+      if (repo.stats) {
+        repo.stats.forEach((stat) => {
+          const existing = trendData.get(stat.stat_date) || 0
+          trendData.set(stat.stat_date, existing + stat.lines_added)
+        })
+      }
     })
-  })
+  }
   const sortedDates = Array.from(trendData.keys()).sort()
   const trendValues = sortedDates.map((d) => trendData.get(d) || 0)
 
@@ -74,13 +78,13 @@ function ProjectDetailPage() {
       </div>
 
       <div className="detail-section">
-        <h2>子仓库 ({project.repos.length})</h2>
+        <h2>子仓库 ({project.repos?.length || 0})</h2>
         <div className="repo-list">
-          {project.repos.map((repo) => (
+          {(project.repos || []).map((repo) => (
             <div key={repo.id} className="repo-item">
               <div className="repo-path">{repo.path}</div>
               <div className="repo-stats">
-                {repo.stats.length > 0 ? (
+                {(repo.stats && repo.stats.length > 0) ? (
                   repo.stats.map((stat) => (
                     <span key={stat.id} className="stat-tag">
                       {stat.stat_date}: +{stat.lines_added} -{stat.lines_deleted} ({stat.author})
