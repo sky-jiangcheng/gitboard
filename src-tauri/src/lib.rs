@@ -16,29 +16,15 @@ fn is_port_open(host: &str, port: u16) -> bool {
 }
 
 fn locate_go_binary(app: &tauri::AppHandle) -> std::path::PathBuf {
-    // Try resource_dir (where Tauri puts bundled resources)
+    // The Go binary is bundled via tauri.conf.json resources: ["../bin/gitboard"]
+    // Tauri copies it into the resource directory at build time.
     if let Ok(resource_dir) = app.path().resource_dir() {
-        #[cfg(target_os = "macos")]
-        {
-            // On macOS, .app/Contents/Resources/ is resource_dir
-            // We use bin/gitboard layout: place Go binary next to tauri binary
-            let macos_dir = resource_dir.parent().and_then(|p| p.parent()).map(|p| p.join("MacOS"));
-            if let Some(macos_dir) = macos_dir {
-                let candidate = macos_dir.join("gitboard");
-                if candidate.exists() {
-                    return candidate;
-                }
-            }
-        }
-        #[cfg(not(target_os = "macos"))]
-        {
-            let candidate = resource_dir.join("gitboard");
-            if candidate.exists() {
-                return candidate;
-            }
+        let candidate = resource_dir.join("gitboard");
+        if candidate.exists() {
+            return candidate;
         }
     }
-    // Fallback: alongside the running tauri binary
+    // Fallback: alongside the running tauri binary (dev mode / sidecar)
     if let Ok(exe) = std::env::current_exe() {
         if let Some(parent) = exe.parent() {
             let candidate = parent.join("gitboard");

@@ -80,12 +80,15 @@ jobs:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
         run: |
-          mkdir -p src-tauri/binaries
+          mkdir -p bin
           go build -ldflags="-s -w" \
-            -o "src-tauri/binaries/gitboard-${{ matrix.target }}${{ matrix.ext }}" .
+            -o "bin/gitboard${{ matrix.ext }}" .
 
       - name: Setup Rust target
         run: rustup target add ${{ matrix.target }}
+
+      - name: Install Tauri CLI
+        run: npm install -g @tauri-apps/cli
 
       - name: Build Tauri app
         run: cargo tauri build --target ${{ matrix.target }}
