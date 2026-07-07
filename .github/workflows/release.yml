@@ -74,12 +74,14 @@ jobs:
       - name: Download Artifacts
         uses: actions/download-artifact@v4
 
-      - name: Rename Files
+      - name: Prepare Release Files
         run: |
-          mv gitboard-linux-amd64/gitboard gitboard-linux-amd64
-          mv gitboard-darwin-amd64/gitboard gitboard-darwin-amd64
-          mv gitboard-darwin-arm64/gitboard gitboard-darwin-arm64
-          mv gitboard-windows-amd64/gitboard.exe gitboard-windows-amd64.exe
+          # download-artifact creates dirs, we need flat files for release
+          cp gitboard-linux-amd64/gitboard gitboard-linux-amd64
+          cp gitboard-darwin-amd64/gitboard gitboard-darwin-amd64
+          cp gitboard-darwin-arm64/gitboard gitboard-darwin-arm64
+          cp gitboard-windows-amd64/gitboard.exe gitboard-windows-amd64.exe
+          rm -rf gitboard-linux-amd64 gitboard-darwin-amd64 gitboard-darwin-arm64 gitboard-windows-amd64
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
