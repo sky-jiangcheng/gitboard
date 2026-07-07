@@ -131,12 +131,30 @@ jobs:
           </plist>
           PLISTEOF
 
-          # Create DMG
+          # Prepare DMG staging directory
+          STAGING_DIR="${APP_NAME}-staging"
+          mkdir -p "${STAGING_DIR}"
+
+          # Move .app bundle into staging
+          mv "${APP_NAME}.app" "${STAGING_DIR}/"
+
+          # --- ① /Applications drag-to-install symlink ---
+          ln -s /Applications "${STAGING_DIR}/Applications"
+
+          # --- ② Volume icon (reuse app icon) ---
+          cp "${APP_NAME}.icns" "${STAGING_DIR}/.VolumeIcon.icns"
+
+          # Create DMG from staging directory
+          # SetFile to mark volume icon is not available on CI, but the icon file
+          # presence alone is enough for DMG to pick it up on first mount
           DMG_NAME="gitboard-${{ matrix.target }}.dmg"
           hdiutil create -volname "${APP_NAME}" \
-            -srcfolder "${APP_NAME}.app" \
+            -srcfolder "${STAGING_DIR}" \
             -ov -format UDZO \
             "${DMG_NAME}"
+
+          # Cleanup staging
+          rm -rf "${STAGING_DIR}"
 
           # Also create tarball for CLI users
           tar -czf "gitboard-${{ matrix.target }}.tar.gz" gitboard
