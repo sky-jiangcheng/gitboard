@@ -1,1 +1,23 @@
-# probe content
+# Configuration file - ignored to allow local customization
+# Configuration file is optional; users can create their own copy / 配置文件 - 被忽略以允许本地自定义
+# 配置文件是可选的；用户可以创建自己的副本
+# Local user configuration overrides / 本地用户配置覆盖
+# Users can create .statistics.local to override defaults / 用户可创建 .statistics.local 覆盖默认配置
+.statistics.local
+
+# Temporary files / 临时文件
+*.tmp
+*.swp
+
+# GitBoard binary
+gitboard
+git-dashboard
+
+# Database files
+*.db
+*.db-shm
+*.db-wal
+
+# Node
+web/node_modules/
+web/dist/
