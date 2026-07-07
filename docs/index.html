@@ -150,14 +150,49 @@
     </div>
 
     <div class="install-section" style="border-radius:12px; margin-top:32px; padding:32px;">
-      <h3 style="margin-bottom:16px">命令行快速安装</h3>
-      <h4 style="margin-top:16px">macOS / Linux</h4>
-      <code>curl -fsSL https://raw.githubusercontent.com/sky-jiangcheng/gitboard/master/scripts/install.sh | bash</code>
-      <h4 style="margin-top:16px">Windows (PowerShell)</h4>
-      <code>iwr -useb https://raw.githubusercontent.com/sky-jiangcheng/gitboard/master/scripts/install.ps1 | iex</code>
-      <h4 style="margin-top:16px">手动安装</h4>
-      <p style="color:#ccc;font-size:14px">下载对应平台的压缩包，解压后运行即可。</p>
-      <code>tar -xzf gitboard-linux-amd64.tar.gz && chmod +x gitboard && ./gitboard</code>
+      <h3 style="margin-bottom:24px">安装说明</h3>
+
+      <!-- macOS -->
+      <div style="background:#0d1117;border-radius:8px;padding:20px;margin-bottom:16px">
+        <h4 style="color:#4caf50;margin-bottom:12px">macOS</h4>
+        <p style="color:#ccc;font-size:14px;margin-bottom:8px">下载 .dmg 文件后：</p>
+        <ol style="color:#ccc;font-size:14px;padding-left:20px;line-height:2">
+          <li>双击打开 .dmg 文件</li>
+          <li>将 <code style="background:#333;padding:2px 6px;border-radius:4px;color:#4caf50">GitBoard.app</code> 拖入 Applications 文件夹</li>
+          <li>首次打开时，右键点击应用图标，选择 <strong>打开</strong>（macOS Gatekeeper 会提示未签名应用）</li>
+        </ol>
+        <p style="color:#999;font-size:13px;margin-top:8px">或通过命令行：</p>
+        <code style="display:block;background:#000;padding:12px;border-radius:6px;font-size:13px;color:#4caf50;margin-top:8px">tar -xzf gitboard-darwin-*.tar.gz && chmod +x gitboard && ./gitboard</code>
+      </div>
+
+      <!-- Windows -->
+      <div style="background:#0d1117;border-radius:8px;padding:20px;margin-bottom:16px">
+        <h4 style="color:#4caf50;margin-bottom:12px">Windows</h4>
+        <p style="color:#ccc;font-size:14px;margin-bottom:8px">下载 .zip 文件后：</p>
+        <ol style="color:#ccc;font-size:14px;padding-left:20px;line-height:2">
+          <li>右键点击 .zip 文件，选择 <strong>全部解压缩</strong></li>
+          <li>进入解压目录，双击运行 <code style="background:#333;padding:2px 6px;border-radius:4px;color:#4caf50">gitboard.exe</code></li>
+          <li>Windows Defender 可能弹出警告，点击 <strong>更多信息</strong> > <strong>仍要运行</strong></li>
+        </ol>
+      </div>
+
+      <!-- Linux -->
+      <div style="background:#0d1117;border-radius:8px;padding:20px;margin-bottom:16px">
+        <h4 style="color:#4caf50;margin-bottom:12px">Linux</h4>
+        <p style="color:#ccc;font-size:14px;margin-bottom:8px">下载 .tar.gz 文件后：</p>
+        <code style="display:block;background:#000;padding:12px;border-radius:6px;font-size:13px;color:#4caf50;margin-top:8px">tar -xzf gitboard-linux-amd64.tar.gz && chmod +x gitboard && ./gitboard</code>
+        <p style="color:#999;font-size:13px;margin-top:12px">如要在系统级别安装：</p>
+        <code style="display:block;background:#000;padding:12px;border-radius:6px;font-size:13px;color:#4caf50;margin-top:8px">sudo mv gitboard /usr/local/bin/</code>
+      </div>
+
+      <!-- 一键安装脚本 -->
+      <div style="background:#0d1117;border-radius:8px;padding:20px">
+        <h4 style="color:#4caf50;margin-bottom:12px">一键安装（实验性）</h4>
+        <p style="color:#ccc;font-size:14px;margin-bottom:8px">macOS / Linux：</p>
+        <code style="display:block;background:#000;padding:12px;border-radius:6px;font-size:13px;color:#4caf50">curl -fsSL https://raw.githubusercontent.com/sky-jiangcheng/gitboard/master/scripts/install.sh | bash</code>
+        <p style="color:#ccc;font-size:14px;margin-bottom:8px;margin-top:12px">Windows (PowerShell 管理员)：</p>
+        <code style="display:block;background:#000;padding:12px;border-radius:6px;font-size:13px;color:#4caf50">iwr -useb https://raw.githubusercontent.com/sky-jiangcheng/gitboard/master/scripts/install.ps1 | iex</code>
+      </div>
     </div>
   </section>
 

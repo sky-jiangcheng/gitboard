@@ -65,12 +65,31 @@ jobs:
           VERSION="${{ github.ref_name }}"
           APP_NAME="GitBoard"
 
+          # Generate .icns from PWA icon
+          mkdir -p "${APP_NAME}.iconset"
+          ICON_SRC="web/public/icon-512.png"
+          sips -z 16 16   "${ICON_SRC}" --out "${APP_NAME}.iconset/icon_16x16.png"
+          sips -z 32 32   "${ICON_SRC}" --out "${APP_NAME}.iconset/icon_16x16@2x.png"
+          sips -z 32 32   "${ICON_SRC}" --out "${APP_NAME}.iconset/icon_32x32.png"
+          sips -z 64 64   "${ICON_SRC}" --out "${APP_NAME}.iconset/icon_32x32@2x.png"
+          sips -z 128 128 "${ICON_SRC}" --out "${APP_NAME}.iconset/icon_128x128.png"
+          sips -z 256 256 "${ICON_SRC}" --out "${APP_NAME}.iconset/icon_128x128@2x.png"
+          sips -z 256 256 "${ICON_SRC}" --out "${APP_NAME}.iconset/icon_256x256.png"
+          sips -z 512 512 "${ICON_SRC}" --out "${APP_NAME}.iconset/icon_256x256@2x.png"
+          sips -z 512 512 "${ICON_SRC}" --out "${APP_NAME}.iconset/icon_512x512.png"
+          iconutil -c icns "${APP_NAME}.iconset" -o "${APP_NAME}.icns"
+          rm -rf "${APP_NAME}.iconset"
+
           # Create .app bundle structure
           mkdir -p "${APP_NAME}.app/Contents/MacOS"
+          mkdir -p "${APP_NAME}.app/Contents/Resources"
 
           # Copy binary
           cp gitboard "${APP_NAME}.app/Contents/MacOS/gitboard"
           chmod +x "${APP_NAME}.app/Contents/MacOS/gitboard"
+
+          # Copy icon
+          cp "${APP_NAME}.icns" "${APP_NAME}.app/Contents/Resources/"
 
           # Create Info.plist
           cat > "${APP_NAME}.app/Contents/Info.plist" << 'PLISTEOF'
@@ -80,6 +99,8 @@ jobs:
           <dict>
               <key>CFBundleExecutable</key>
               <string>gitboard</string>
+              <key>CFBundleIconFile</key>
+              <string>GitBoard</string>
               <key>CFBundleIdentifier</key>
               <string>com.gitboard.app</string>
               <key>CFBundleName</key>
