@@ -58,20 +58,99 @@ jobs:
         run: |
           go build -ldflags="-s -w" -o gitboard${{ matrix.extension || '' }} .
 
-      - name: Package Binary
+      - name: Create macOS App Bundle and DMG
+        if: startsWith(matrix.target, 'darwin')
         shell: bash
         run: |
-          if [ "${{ matrix.target }}" = "windows-amd64" ]; then
-            powershell Compress-Archive -Path gitboard.exe -DestinationPath gitboard-${{ matrix.target }}.zip
-          else
-            tar -czf gitboard-${{ matrix.target }}.tar.gz gitboard
-          fi
+          VERSION="${{ github.ref_name }}"
+          APP_NAME="GitBoard"
 
-      - name: Upload Artifact
+          # Create .app bundle structure
+          mkdir -p "${APP_NAME}.app/Contents/MacOS"
+
+          # Copy binary
+          cp gitboard "${APP_NAME}.app/Contents/MacOS/gitboard"
+          chmod +x "${APP_NAME}.app/Contents/MacOS/gitboard"
+
+          # Create Info.plist
+          cat > "${APP_NAME}.app/Contents/Info.plist" << 'PLISTEOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>CFBundleExecutable</key>
+              <string>gitboard</string>
+              <key>CFBundleIdentifier</key>
+              <string>com.gitboard.app</string>
+              <key>CFBundleName</key>
+              <string>GitBoard</string>
+              <key>CFBundleDisplayName</key>
+              <string>GitBoard</string>
+              <key>CFBundleVersion</key>
+              <string>PLISTEOF
+          echo "              <string>${VERSION#v}</string>" >> "${APP_NAME}.app/Contents/Info.plist"
+          cat >> "${APP_NAME}.app/Contents/Info.plist" << 'PLISTEOF'
+              </string>
+              <key>CFBundleShortVersionString</key>
+              <string>PLISTEOF
+          echo "              <string>${VERSION#v}</string>" >> "${APP_NAME}.app/Contents/Info.plist"
+          cat >> "${APP_NAME}.app/Contents/Info.plist" << 'PLISTEOF'
+              </string>
+              <key>CFBundlePackageType</key>
+              <string>APPL</string>
+              <key>CFBundleInfoDictionaryVersion</key>
+              <string>6.0</string>
+              <key>LSMinimumSystemVersion</key>
+              <string>10.15</string>
+              <key>LSUIElement</key>
+              <true/>
+              <key>NSHighResolutionCapable</key>
+              <true/>
+          </dict>
+          </plist>
+          PLISTEOF
+
+          # Create DMG
+          DMG_NAME="gitboard-${{ matrix.target }}.dmg"
+          hdiutil create -volname "${APP_NAME}" \
+            -srcfolder "${APP_NAME}.app" \
+            -ov -format UDZO \
+            "${DMG_NAME}"
+
+          # Also create tarball for CLI users
+          tar -czf "gitboard-${{ matrix.target }}.tar.gz" gitboard
+
+          # Verify
+          echo "Created:"
+          ls -lh "${DMG_NAME}" "gitboard-${{ matrix.target }}.tar.gz"
+
+      - name: Package Linux Binary
+        if: startsWith(matrix.target, 'linux')
+        shell: bash
+        run: |
+          tar -czf gitboard-${{ matrix.target }}.tar.gz gitboard
+
+      - name: Package Windows Binary
+        if: startsWith(matrix.target, 'windows')
+        shell: bash
+        run: |
+          powershell Compress-Archive -Path gitboard.exe -DestinationPath gitboard-${{ matrix.target }}.zip
+
+      - name: Upload Artifact (Linux/Windows)
+        if: ${{ !startsWith(matrix.target, 'darwin') }}
         uses: actions/upload-artifact@v4
         with:
           name: gitboard-${{ matrix.target }}
-          path: gitboard-${{ matrix.target }}.${{ matrix.target == 'windows-amd64' && 'zip' || 'tar.gz' }}
+          path: gitboard-${{ matrix.target }}.${{ startsWith(matrix.target, 'linux') && 'tar.gz' || 'zip' }}
+
+      - name: Upload Artifact (macOS)
+        if: startsWith(matrix.target, 'darwin')
+        uses: actions/upload-artifact@v4
+        with:
+          name: gitboard-${{ matrix.target }}
+          path: |
+            gitboard-${{ matrix.target }}.tar.gz
+            gitboard-${{ matrix.target }}.dmg
 
   release:
     name: Create Release
@@ -85,11 +164,24 @@ jobs:
 
       - name: Prepare Release Files
         run: |
-          # download-artifact@v4 extracts into dirs; move archives out, then cleanup
+          # Linux
           mv gitboard-linux-amd64/gitboard-linux-amd64.tar.gz . && rm -rf gitboard-linux-amd64
-          mv gitboard-darwin-amd64/gitboard-darwin-amd64.tar.gz . && rm -rf gitboard-darwin-amd64
-          mv gitboard-darwin-arm64/gitboard-darwin-arm64.tar.gz . && rm -rf gitboard-darwin-arm64
+
+          # macOS Intel
+          mv gitboard-darwin-amd64/gitboard-darwin-amd64.tar.gz . || true
+          mv gitboard-darwin-amd64/gitboard-darwin-amd64.dmg . || true
+          rm -rf gitboard-darwin-amd64
+
+          # macOS ARM
+          mv gitboard-darwin-arm64/gitboard-darwin-arm64.tar.gz . || true
+          mv gitboard-darwin-arm64/gitboard-darwin-arm64.dmg . || true
+          rm -rf gitboard-darwin-arm64
+
+          # Windows
           mv gitboard-windows-amd64/gitboard-windows-amd64.zip . && rm -rf gitboard-windows-amd64
+
+          echo "Release files:"
+          ls -lh gitboard-*
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
@@ -97,6 +189,8 @@ jobs:
           files: |
             gitboard-linux-amd64.tar.gz
             gitboard-darwin-amd64.tar.gz
+            gitboard-darwin-amd64.dmg
             gitboard-darwin-arm64.tar.gz
+            gitboard-darwin-arm64.dmg
             gitboard-windows-amd64.zip
           generate_release_notes: true
