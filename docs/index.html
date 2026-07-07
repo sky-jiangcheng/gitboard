@@ -71,7 +71,7 @@
 <body>
 
   <header class="hero">
-    <h1><span>Git</span> Dashboard</h1>
+    <h1><span>Git</span>Board</h1>
     <p>自动发现本地所有 Git 仓库，以可视化面板独立展示每个项目的每日提交量</p>
     <div>
       <span class="badge badge-go">Go</span>
@@ -126,21 +126,21 @@
       <div class="download-card">
         <div class="os">&#x1F427;</div>
         <h4>Windows</h4>
-        <p style="color:#666;font-size:13px;margin-bottom:12px">.exe 64-bit</p>
-        <a href="https://github.com/sky-jiangcheng/gitboard/releases/latest/download/gitboard-windows-amd64.exe" class="btn btn-primary">下载 Windows</a>
+        <p style="color:#666;font-size:13px;margin-bottom:12px">.exe 64-bit (.zip)</p>
+        <a href="https://github.com/sky-jiangcheng/gitboard/releases/latest/download/gitboard-windows-amd64.zip" class="btn btn-primary">下载 Windows</a>
       </div>
       <div class="download-card">
         <div class="os">&#x1F34E;</div>
         <h4>macOS</h4>
-        <p style="color:#666;font-size:13px;margin-bottom:12px">Intel + Apple Silicon</p>
-        <a href="https://github.com/sky-jiangcheng/gitboard/releases/latest/download/gitboard-darwin-amd64" class="btn btn-primary">下载 macOS Intel</a>
-        <a href="https://github.com/sky-jiangcheng/gitboard/releases/latest/download/gitboard-darwin-arm64" class="btn btn-primary" style="margin-top:8px">下载 macOS M 系列</a>
+        <p style="color:#666;font-size:13px;margin-bottom:12px">Intel + Apple Silicon (.tar.gz)</p>
+        <a href="https://github.com/sky-jiangcheng/gitboard/releases/latest/download/gitboard-darwin-amd64.tar.gz" class="btn btn-primary">下载 macOS Intel</a>
+        <a href="https://github.com/sky-jiangcheng/gitboard/releases/latest/download/gitboard-darwin-arm64.tar.gz" class="btn btn-primary" style="margin-top:8px">下载 macOS M 系列</a>
       </div>
       <div class="download-card">
         <div class="os">&#x1F427;</div>
         <h4>Linux</h4>
-        <p style="color:#666;font-size:13px;margin-bottom:12px">amd64</p>
-        <a href="https://github.com/sky-jiangcheng/gitboard/releases/latest/download/gitboard-linux-amd64" class="btn btn-primary">下载 Linux</a>
+        <p style="color:#666;font-size:13px;margin-bottom:12px">amd64 (.tar.gz)</p>
+        <a href="https://github.com/sky-jiangcheng/gitboard/releases/latest/download/gitboard-linux-amd64.tar.gz" class="btn btn-primary">下载 Linux</a>
       </div>
     </div>
 
@@ -151,8 +151,8 @@
       <h4 style="margin-top:16px">Windows (PowerShell)</h4>
       <code>iwr -useb https://raw.githubusercontent.com/sky-jiangcheng/gitboard/master/scripts/install.ps1 | iex</code>
       <h4 style="margin-top:16px">手动安装</h4>
-      <p style="color:#ccc;font-size:14px">下载对应平台的二进制文件，赋予执行权限后直接运行即可。</p>
-      <code>chmod +x gitboard && ./gitboard</code>
+      <p style="color:#ccc;font-size:14px">下载对应平台的压缩包，解压后运行即可。</p>
+      <code>tar -xzf gitboard-linux-amd64.tar.gz && chmod +x gitboard && ./gitboard</code>
     </div>
   </section>
 

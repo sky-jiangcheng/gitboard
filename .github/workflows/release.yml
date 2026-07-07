@@ -58,11 +58,20 @@ jobs:
         run: |
           go build -ldflags="-s -w" -o gitboard${{ matrix.extension || '' }} .
 
+      - name: Package Binary
+        shell: bash
+        run: |
+          if [ "${{ matrix.target }}" = "windows-amd64" ]; then
+            zip gitboard-${{ matrix.target }}.zip gitboard.exe
+          else
+            tar -czf gitboard-${{ matrix.target }}.tar.gz gitboard
+          fi
+
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: gitboard-${{ matrix.target }}
-          path: gitboard${{ matrix.extension || '' }}
+          path: gitboard-${{ matrix.target }}.${{ matrix.target == 'windows-amd64' && 'zip' || 'tar.gz' }}
 
   release:
     name: Create Release
@@ -76,18 +85,18 @@ jobs:
 
       - name: Prepare Release Files
         run: |
-          # download-artifact@v4 extracts into dirs; move files out, then cleanup
-          mv gitboard-linux-amd64/gitboard ./gitboard-linux-amd64.tmp && rm -rf gitboard-linux-amd64 && mv gitboard-linux-amd64.tmp gitboard-linux-amd64
-          mv gitboard-darwin-amd64/gitboard ./gitboard-darwin-amd64.tmp && rm -rf gitboard-darwin-amd64 && mv gitboard-darwin-amd64.tmp gitboard-darwin-amd64
-          mv gitboard-darwin-arm64/gitboard ./gitboard-darwin-arm64.tmp && rm -rf gitboard-darwin-arm64 && mv gitboard-darwin-arm64.tmp gitboard-darwin-arm64
-          mv gitboard-windows-amd64/gitboard.exe ./gitboard-windows-amd64.exe.tmp && rm -rf gitboard-windows-amd64 && mv gitboard-windows-amd64.exe.tmp gitboard-windows-amd64.exe
+          # download-artifact@v4 extracts into dirs; move archives out, then cleanup
+          mv gitboard-linux-amd64/gitboard-linux-amd64.tar.gz . && rm -rf gitboard-linux-amd64
+          mv gitboard-darwin-amd64/gitboard-darwin-amd64.tar.gz . && rm -rf gitboard-darwin-amd64
+          mv gitboard-darwin-arm64/gitboard-darwin-arm64.tar.gz . && rm -rf gitboard-darwin-arm64
+          mv gitboard-windows-amd64/gitboard-windows-amd64.zip . && rm -rf gitboard-windows-amd64
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            gitboard-linux-amd64
-            gitboard-darwin-amd64
-            gitboard-darwin-arm64
-            gitboard-windows-amd64.exe
+            gitboard-linux-amd64.tar.gz
+            gitboard-darwin-amd64.tar.gz
+            gitboard-darwin-arm64.tar.gz
+            gitboard-windows-amd64.zip
           generate_release_notes: true
