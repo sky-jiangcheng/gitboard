@@ -28,12 +28,12 @@
 
 ### 下载安装
 
-从 [Releases](https://github.com/sky-jiangcheng/CodeStat/releases) 下载对应平台的最新版本。
+从 [Releases](https://github.com/sky-jiangcheng/gitboard/releases) 下载对应平台的最新版本。
 
 | 平台 | 一键安装 |
 |------|---------|
-| macOS / Linux | `curl -fsSL https://raw.githubusercontent.com/sky-jiangcheng/CodeStat/master/scripts/install.sh \| bash` |
-| Windows | `iwr -useb https://raw.githubusercontent.com/sky-jiangcheng/CodeStat/master/scripts/install.ps1 \| iex` |
+| macOS / Linux | `curl -fsSL https://raw.githubusercontent.com/sky-jiangcheng/gitboard/master/scripts/install.sh \| bash` |
+| Windows | `iwr -useb https://raw.githubusercontent.com/sky-jiangcheng/gitboard/master/scripts/install.ps1 \| iex` |
 
 ### 手动使用
 

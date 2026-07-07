@@ -4,7 +4,7 @@ set -e
 
 INSTALL_DIR="/usr/local/bin"
 BINARY_NAME="gitboard"
-REPO="sky-jiangcheng/CodeStat"
+REPO="sky-jiangcheng/gitboard"
 
 OS=$(uname -s | tr '[:upper:]' '[:lower:]')
 ARCH=$(uname -m)

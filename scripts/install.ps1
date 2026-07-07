@@ -1,11 +1,11 @@
 # GitBoard install script for Windows
-# Run in PowerShell: iwr -useb https://raw.githubusercontent.com/sky-jiangcheng/CodeStat/master/scripts/install.ps1 | iex
+# Run in PowerShell: iwr -useb https://raw.githubusercontent.com/sky-jiangcheng/gitboard/master/scripts/install.ps1 | iex
 
 $ErrorActionPreference = "Stop"
 
 $InstallDir = "$env:LOCALAPPDATA\GitDashboard"
 $BinaryName = "gitboard.exe"
-$Repo = "sky-jiangcheng/CodeStat"
+$Repo = "sky-jiangcheng/gitboard"
 $Target = "windows-amd64"
 
 Write-Host "Downloading GitBoard for Windows..."
