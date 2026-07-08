@@ -7,10 +7,10 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.svg'],
+      includeAssets: ['favicon.svg', 'favicon.ico'],
       manifest: {
         name: 'GitBoard',
-        short_name: 'GitDash',
+        short_name: 'GitBoard',
         description: 'Git 代码提交统计面板 - 自动发现本地项目并可视化展示提交量',
         theme_color: '#1a1a2e',
         background_color: '#f5f7fa',
