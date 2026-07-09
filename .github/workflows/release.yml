@@ -85,19 +85,87 @@ jobs:
           tar -czf "release/gitboard-linux-amd64.tar.gz" gitboard
           echo "RELEASE_DIR=build/bin/release" >> $GITHUB_ENV
 
+      - name: Install Pillow for DMG background
+        if: runner.os == 'macOS'
+        run: pip3 install Pillow --quiet
+
       - name: Package macOS
         if: runner.os == 'macOS'
         run: |
+          set -e
           mkdir -p release
+
           # Wails produces .app bundle in build/bin/
           APP=$(ls -d build/bin/*.app 2>/dev/null | head -1)
+          APP_NAME=$(basename "$APP" .app)
+
           if [ -n "$APP" ]; then
-            # Create DMG
+            # Create staging directory for DMG
+            STAGING_DIR=$(mktemp -d -t gitboard-dmg)
+            cp -R "$APP" "$STAGING_DIR/"
+            ln -s /Applications "$STAGING_DIR/Applications"
+
+            # Create background image
+            BG_DIR="$STAGING_DIR/.background"
+            mkdir -p "$BG_DIR"
+            BG_FILE="$BG_DIR/dmg-background.png"
+
+            if [ -f "web/public/icon-512.png" ]; then
+              python3 -c "from PIL import Image, ImageDraw; import sys; icon = Image.open(sys.argv[1]).convert('RGBA'); bg = Image.new('RGBA', (600, 400), (45, 38, 64, 255)); icon_small = icon.resize((128, 128), Image.LANCZOS); bg.paste(icon_small, (130, 80), icon_small); draw = ImageDraw.Draw(bg); draw.rectangle([380, 90, 540, 250], outline=(100, 90, 130, 255), width=2); bg.save(sys.argv[2])" "web/public/icon-512.png" "$BG_FILE" 2>/dev/null || rm -f "$BG_FILE"
+            fi
+
+            # Create initial read-write DMG
+            TMP_DMG="/tmp/gitboard-tmp.dmg"
+            FINAL_DMG="release/gitboard-${{ matrix.target }}.dmg"
+
             hdiutil create -volname GitBoard \
-              -srcfolder "$APP" \
-              -ov -format UDZO \
-              "release/gitboard-${{ matrix.target }}.dmg"
+              -srcfolder "$STAGING_DIR" \
+              -ov -format UDRW \
+              "$TMP_DMG"
+
+            # Mount DMG
+            MOUNT_POINT="/Volumes/GitBoard"
+            hdiutil attach "$TMP_DMG" -nobrowse -mountpoint "$MOUNT_POINT"
+
+            # Set Finder window appearance via AppleScript
+            sleep 2
+
+            if [ -f "$MOUNT_POINT/.background/dmg-background.png" ]; then
+              BG_SCRIPT="set background picture of viewOptions to file \".background:dmg-background.png\""
+            else
+              BG_SCRIPT=""
+            fi
+
+            osascript <<EOF
+              tell application "Finder"
+                tell disk "GitBoard"
+                  open
+                  set current view of container window to icon view
+                  set toolbar visible of container window to false
+                  set statusbar visible of container window to false
+                  set the bounds of container window to {100, 100, 700, 500}
+                  set viewOptions to the icon view options of container window
+                  set arrangement of viewOptions to not arranged
+                  set icon size of viewOptions to 128
+                  set text size of viewOptions to 13
+                  $BG_SCRIPT
+                  set position of item "${APP_NAME}.app" of container window to {130, 160}
+                  set position of item "Applications" of container window to {470, 160}
+                  close
+                  open
+                  update without registering applications
+                  delay 2
+                end tell
+              end tell
+            EOF
+
+            # Unmount and convert to compressed read-only DMG
+            hdiutil detach "$MOUNT_POINT"
+            hdiutil convert "$TMP_DMG" -format UDZO -o "$FINAL_DMG"
+            rm -f "$TMP_DMG"
+            rm -rf "$STAGING_DIR"
           fi
+
           # Also create tar.gz of the binary
           BIN=$(ls build/bin/gitboard* 2>/dev/null | grep -v '\.app' | head -1)
           if [ -n "$BIN" ]; then
