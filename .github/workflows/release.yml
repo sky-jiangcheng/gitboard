@@ -26,7 +26,7 @@ jobs:
             goos: linux
             goarch: amd64
           - target: darwin-amd64
-            runner: macos-13
+            runner: macos-latest
             goos: darwin
             goarch: amd64
           - target: darwin-arm64
@@ -78,6 +78,8 @@ jobs:
           export PATH=$PATH:$(go env GOPATH)/bin
           if [ "${{ runner.os }}" = "Linux" ]; then
             wails build -platform ${{ matrix.goos }}/${{ matrix.goarch }} -clean -tags webkit2_41
+          elif [ "${{ matrix.goarch }}" = "amd64" ]; then
+            arch -x86_64 wails build -platform ${{ matrix.goos }}/${{ matrix.goarch }} -clean
           else
             wails build -platform ${{ matrix.goos }}/${{ matrix.goarch }} -clean
           fi
