@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { getProjects, getSummary, triggerScan, Project, Summary } from '../api/client'
+import { useState, useEffect, useMemo } from 'react'
+import { getProjects, getSummary, triggerScan, getTodoCounts, Project, Summary, TodoCount } from '../api/client'
 import SummaryBar from '../components/SummaryBar'
 import DatePicker from '../components/DatePicker'
 import ProjectCard from '../components/ProjectCard'
@@ -10,6 +10,15 @@ function getYesterday(): string {
   return d.toISOString().split('T')[0]
 }
 
+type SortKey = 'name' | 'my_added' | 'my_files' | 'repo_count'
+
+const SORT_OPTIONS: { key: SortKey; label: string }[] = [
+  { key: 'name', label: '名称' },
+  { key: 'my_added', label: '新增行数' },
+  { key: 'my_files', label: '文件变更' },
+  { key: 'repo_count', label: '仓库数' },
+]
+
 function Dashboard() {
   const [projects, setProjects] = useState<Project[]>([])
   const [summary, setSummary] = useState<Summary | null>(null)
@@ -17,19 +26,25 @@ function Dashboard() {
   const [loading, setLoading] = useState(true)
   const [scanning, setScanning] = useState(false)
   const [error, setError] = useState('')
+  const [sortKey, setSortKey] = useState<SortKey>('my_added')
+  const [confirmScan, setConfirmScan] = useState(false)
+  const [todoCounts, setTodoCounts] = useState<TodoCount[]>([])
 
   const fetchData = async (selectedDate: string) => {
     setLoading(true)
     setError('')
     try {
-      const [projData, sumData] = await Promise.all([
+      const [projData, sumData, counts] = await Promise.all([
         getProjects(selectedDate),
         getSummary(selectedDate),
+        getTodoCounts(),
       ])
       setProjects(projData)
       setSummary(sumData)
-    } catch (e: any) {
-      setError(e.message || 'Failed to load data')
+      setTodoCounts(counts)
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : '加载失败'
+      setError(msg)
     } finally {
       setLoading(false)
     }
@@ -40,45 +55,129 @@ function Dashboard() {
   }, [date])
 
   const handleScan = async () => {
+    setConfirmScan(false)
     setScanning(true)
+    setError('')
     try {
       await triggerScan()
       await fetchData(date)
-    } catch (e: any) {
-      setError(e.message || 'Scan failed')
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : '扫描失败'
+      setError(msg)
     } finally {
       setScanning(false)
     }
   }
 
-  const handleDateChange = (newDate: string) => {
-    setDate(newDate)
-  }
+  const sorted = useMemo(() => {
+    const list = [...projects]
+    list.sort((a, b) => {
+      switch (sortKey) {
+        case 'name':
+          return a.name.localeCompare(b.name)
+        case 'my_added':
+          return b.my_added - a.my_added
+        case 'my_files':
+          return b.my_files - a.my_files
+        case 'repo_count':
+          return b.repo_count - a.repo_count
+        default:
+          return 0
+      }
+    })
+    return list
+  }, [projects, sortKey])
+
+  const todoMap = useMemo(() => {
+    const map = new Map<number, number>()
+    todoCounts.forEach(c => map.set(c.project_id, c.count))
+    return map
+  }, [todoCounts])
+
+  const globalTodoCount = useMemo(() => {
+    return todoCounts.reduce((sum, c) => sum + c.count, 0)
+  }, [todoCounts])
 
   return (
     <div className="dashboard">
-      <SummaryBar summary={summary} />
+      <SummaryBar summary={summary} globalTodoCount={globalTodoCount} />
 
       <div className="dashboard-controls">
-        <DatePicker value={date} onChange={handleDateChange} />
-        <button className="btn btn-primary" onClick={handleScan} disabled={scanning}>
-          {scanning ? '扫描中...' : '重新扫描'}
-        </button>
+        <DatePicker value={date} onChange={setDate} />
+        <div className="dashboard-actions">
+          <div className="sort-control">
+            <label>排序：</label>
+            <select
+              value={sortKey}
+              onChange={(e) => setSortKey(e.target.value as SortKey)}
+              className="form-input sort-select"
+            >
+              {SORT_OPTIONS.map((opt) => (
+                <option key={opt.key} value={opt.key}>{opt.label}</option>
+              ))}
+            </select>
+          </div>
+          {confirmScan ? (
+            <div className="confirm-group">
+              <span className="confirm-text">确定重新扫描？</span>
+              <button className="btn btn-primary btn-sm" onClick={handleScan} disabled={scanning}>
+                确认
+              </button>
+              <button className="btn btn-sm" onClick={() => setConfirmScan(false)}>
+                取消
+              </button>
+            </div>
+          ) : (
+            <button className="btn btn-primary" onClick={() => setConfirmScan(true)} disabled={scanning}>
+              {scanning ? '扫描中...' : '重新扫描'}
+            </button>
+          )}
+        </div>
       </div>
 
-      {error && <div className="error-banner">{error}</div>}
+      {error && (
+        <div className="error-banner">
+          <span>{error}</span>
+          <button className="btn btn-sm" onClick={() => fetchData(date)}>重试</button>
+        </div>
+      )}
 
       {loading ? (
-        <div className="loading">加载中...</div>
-      ) : projects.length === 0 ? (
+        <div className="project-grid">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="project-card skeleton-card">
+              <div className="card-header">
+                <div className="skeleton skeleton-text" style={{width: '60%', height: 20}} />
+              </div>
+              <div className="card-body">
+                {Array.from({ length: 5 }).map((_, j) => (
+                  <div key={j} className="stat-row">
+                    <div className="skeleton skeleton-text" style={{width: 48}} />
+                    <div className="skeleton skeleton-text" style={{width: 36}} />
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : sorted.length === 0 ? (
         <div className="empty-state">
-          <p>暂无项目数据</p>
-          <p className="hint">点击"重新扫描"或前往设置页面配置扫描目录</p>
+          <div className="empty-icon">&#128269;</div>
+          <h3>暂无项目数据</h3>
+          <p>GitBoard 尚未扫描到任何 Git 仓库。请先配置扫描目录。</p>
+          <div className="empty-actions">
+            <button className="btn btn-primary" onClick={() => setConfirmScan(true)}>
+              开始扫描
+            </button>
+            <a href="/settings" className="btn btn-secondary">
+              配置目录
+            </a>
+          </div>
         </div>
       ) : (
         <div className="project-grid">
-          {projects.map((p) => (
-            <ProjectCard key={p.id} project={p} />
+          {sorted.map((p) => (
+            <ProjectCard key={p.id} project={p} date={date} todoCount={todoMap.get(p.id)} />
           ))}
         </div>
       )}

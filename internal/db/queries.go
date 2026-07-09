@@ -332,3 +332,255 @@ func scanDailyStats(rows *sql.Rows) ([]DailyStat, error) {
 	}
 	return stats, rows.Err()
 }
+
+// -- Todos --
+
+// Todo represents a project todo item.
+type Todo struct {
+	ID        int64  `json:"id"`
+	ProjectID int64  `json:"project_id"`
+	Title     string `json:"title"`
+	Completed bool   `json:"completed"`
+	Priority  int    `json:"priority"`
+	SortOrder int    `json:"sort_order"`
+	CreatedAt string `json:"created_at"`
+	UpdatedAt string `json:"updated_at"`
+}
+
+// ListTodos returns all todos for a project, ordered by sort_order.
+func ListTodos(db *sql.DB, projectID int64) ([]Todo, error) {
+	rows, err := db.Query(
+		"SELECT id, project_id, title, completed, priority, sort_order, created_at, updated_at FROM project_todos WHERE project_id = ? ORDER BY sort_order",
+		projectID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanTodos(rows)
+}
+
+// CreateTodo inserts a new todo and returns the created record.
+func CreateTodo(db *sql.DB, projectID int64, title string) (*Todo, error) {
+	// Get the next sort_order value
+	var maxSort int
+	err := db.QueryRow(
+		"SELECT COALESCE(MAX(sort_order), -1) FROM project_todos WHERE project_id = ?",
+		projectID,
+	).Scan(&maxSort)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get max sort_order: %w", err)
+	}
+
+	now := time.Now().Format("2006-01-02 15:04:05")
+	res, err := db.Exec(
+		"INSERT INTO project_todos (project_id, title, sort_order, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+		projectID, title, maxSort+1, now, now,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create todo: %w", err)
+	}
+
+	todoID, err := res.LastInsertId()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get last insert id: %w", err)
+	}
+
+	return &Todo{
+		ID:        todoID,
+		ProjectID: projectID,
+		Title:     title,
+		Completed: false,
+		Priority:  0,
+		SortOrder: maxSort + 1,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}, nil
+}
+
+// ToggleTodo flips the completed status of a todo and updates updated_at.
+func ToggleTodo(db *sql.DB, todoID int64) error {
+	now := time.Now().Format("2006-01-02 15:04:05")
+	res, err := db.Exec(
+		"UPDATE project_todos SET completed = NOT completed, updated_at = ? WHERE id = ?",
+		now, todoID,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to toggle todo: %w", err)
+	}
+	rows, _ := res.RowsAffected()
+	if rows == 0 {
+		return fmt.Errorf("todo not found: %d", todoID)
+	}
+	return nil
+}
+
+// DeleteTodo removes a todo by ID.
+func DeleteTodo(db *sql.DB, todoID int64) error {
+	_, err := db.Exec("DELETE FROM project_todos WHERE id = ?", todoID)
+	return err
+}
+
+// ReorderTodos updates sort_order for a list of todo IDs in a transaction.
+func ReorderTodos(db *sql.DB, todoIDs []int64) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback() //nolint:errcheck
+
+	for i, id := range todoIDs {
+		_, err := tx.Exec(
+			"UPDATE project_todos SET sort_order = ?, updated_at = ? WHERE id = ?",
+			i, time.Now().Format("2006-01-02 15:04:05"), id,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to update sort_order for todo %d: %w", id, err)
+		}
+	}
+
+	return tx.Commit()
+}
+
+func scanTodos(rows *sql.Rows) ([]Todo, error) {
+	var todos []Todo
+	for rows.Next() {
+		var t Todo
+		if err := rows.Scan(&t.ID, &t.ProjectID, &t.Title, &t.Completed, &t.Priority, &t.SortOrder, &t.CreatedAt, &t.UpdatedAt); err != nil {
+			return nil, err
+		}
+		todos = append(todos, t)
+	}
+	return todos, rows.Err()
+}
+
+// -- Notes --
+
+// Note represents a project note.
+type Note struct {
+	ID        int64  `json:"id"`
+	ProjectID int64  `json:"project_id"`
+	Content   string `json:"content"`
+	SortOrder int    `json:"sort_order"`
+	CreatedAt string `json:"created_at"`
+	UpdatedAt string `json:"updated_at"`
+}
+
+// ListNotes returns all notes for a project, ordered by sort_order.
+func ListNotes(db *sql.DB, projectID int64) ([]Note, error) {
+	rows, err := db.Query(
+		"SELECT id, project_id, content, sort_order, created_at, updated_at FROM project_notes WHERE project_id = ? ORDER BY sort_order",
+		projectID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanNotes(rows)
+}
+
+// CreateNote inserts a new note and returns the created record.
+func CreateNote(db *sql.DB, projectID int64, content string) (*Note, error) {
+	var maxSort int
+	err := db.QueryRow(
+		"SELECT COALESCE(MAX(sort_order), -1) FROM project_notes WHERE project_id = ?",
+		projectID,
+	).Scan(&maxSort)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get max sort_order: %w", err)
+	}
+
+	now := time.Now().Format("2006-01-02 15:04:05")
+	res, err := db.Exec(
+		"INSERT INTO project_notes (project_id, content, sort_order, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+		projectID, content, maxSort+1, now, now,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create note: %w", err)
+	}
+
+	noteID, err := res.LastInsertId()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get last insert id: %w", err)
+	}
+
+	return &Note{
+		ID:        noteID,
+		ProjectID: projectID,
+		Content:   content,
+		SortOrder: maxSort + 1,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}, nil
+}
+
+// UpdateNote updates the content and updated_at of a note.
+func UpdateNote(db *sql.DB, noteID int64, content string) error {
+	now := time.Now().Format("2006-01-02 15:04:05")
+	res, err := db.Exec(
+		"UPDATE project_notes SET content = ?, updated_at = ? WHERE id = ?",
+		content, now, noteID,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to update note: %w", err)
+	}
+	rows, _ := res.RowsAffected()
+	if rows == 0 {
+		return fmt.Errorf("note not found: %d", noteID)
+	}
+	return nil
+}
+
+// DeleteNote removes a note by ID.
+func DeleteNote(db *sql.DB, noteID int64) error {
+	_, err := db.Exec("DELETE FROM project_notes WHERE id = ?", noteID)
+	return err
+}
+
+func scanNotes(rows *sql.Rows) ([]Note, error) {
+	var notes []Note
+	for rows.Next() {
+		var n Note
+		if err := rows.Scan(&n.ID, &n.ProjectID, &n.Content, &n.SortOrder, &n.CreatedAt, &n.UpdatedAt); err != nil {
+			return nil, err
+		}
+		notes = append(notes, n)
+	}
+	return notes, rows.Err()
+}
+
+// -- TodoCounts --
+
+// TodoCount holds the todo summary for a project.
+type TodoCount struct {
+	ProjectID int64 `json:"project_id"`
+	Count     int   `json:"count"`
+	Total     int   `json:"total"`
+}
+
+// GetTodoCounts returns the incomplete and total todo counts per project.
+func GetTodoCounts(db *sql.DB) ([]TodoCount, error) {
+	rows, err := db.Query(`
+		SELECT
+			project_id,
+			SUM(CASE WHEN completed = 0 THEN 1 ELSE 0 END) AS count,
+			COUNT(*) AS total
+		FROM project_todos
+		GROUP BY project_id
+		ORDER BY project_id
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var counts []TodoCount
+	for rows.Next() {
+		var c TodoCount
+		if err := rows.Scan(&c.ProjectID, &c.Count, &c.Total); err != nil {
+			return nil, err
+		}
+		counts = append(counts, c)
+	}
+	return counts, rows.Err()
+}

@@ -262,13 +262,15 @@ func (a *App) GetConfig() (*ConfigData, error) {
 
 // UpdateConfig sets a single configuration key-value pair.
 func (a *App) UpdateConfig(key, value string) error {
-	allowed := map[string]bool{"daily_code_standard": true, "scan_depth": true}
+	allowed := map[string]bool{"daily_code_standard": true, "scan_depth": true, "git_author": true}
 	if !allowed[key] {
 		return fmt.Errorf("unknown config key: %s", key)
 	}
-	// Validate the value is a valid integer string
-	if _, err := strconv.Atoi(value); err != nil {
-		return fmt.Errorf("config value must be a number")
+	// Validate numeric configs
+	if key != "git_author" {
+		if _, err := strconv.Atoi(value); err != nil {
+			return fmt.Errorf("config value must be a number")
+		}
 	}
 	return db.SetConfig(a.db, key, value)
 }
@@ -333,6 +335,95 @@ func (a *App) GetSummary(date string) (*SummaryData, error) {
 	}
 	summary.RepoCount = len(repoSet)
 	return summary, nil
+}
+
+// -- Todo Bind methods --
+
+// ListTodos returns all todo items for a project.
+func (a *App) ListTodos(projectID int64) []db.Todo {
+	todos, err := db.ListTodos(a.db, projectID)
+	if err != nil {
+		log.Printf("list todos error: %v", err)
+		return nil
+	}
+	if todos == nil {
+		todos = []db.Todo{}
+	}
+	return todos
+}
+
+// CreateTodo creates a new todo for a project.
+func (a *App) CreateTodo(projectID int64, title string) (*db.Todo, error) {
+	if strings.TrimSpace(title) == "" {
+		return nil, fmt.Errorf("title is required")
+	}
+	return db.CreateTodo(a.db, projectID, title)
+}
+
+// ToggleTodo flips the completed status of a todo.
+func (a *App) ToggleTodo(todoID int64) error {
+	return db.ToggleTodo(a.db, todoID)
+}
+
+// DeleteTodo removes a todo.
+func (a *App) DeleteTodo(todoID int64) error {
+	return db.DeleteTodo(a.db, todoID)
+}
+
+// ReorderTodos updates the sort_order for a list of todo IDs.
+func (a *App) ReorderTodos(todoIDs []int64) error {
+	return db.ReorderTodos(a.db, todoIDs)
+}
+
+// -- Note Bind methods --
+
+// ListNotes returns all notes for a project.
+func (a *App) ListNotes(projectID int64) []db.Note {
+	notes, err := db.ListNotes(a.db, projectID)
+	if err != nil {
+		log.Printf("list notes error: %v", err)
+		return nil
+	}
+	if notes == nil {
+		notes = []db.Note{}
+	}
+	return notes
+}
+
+// CreateNote creates a new note for a project.
+func (a *App) CreateNote(projectID int64, content string) (*db.Note, error) {
+	if strings.TrimSpace(content) == "" {
+		return nil, fmt.Errorf("content is required")
+	}
+	return db.CreateNote(a.db, projectID, content)
+}
+
+// UpdateNote updates the content of a note.
+func (a *App) UpdateNote(noteID int64, content string) error {
+	if strings.TrimSpace(content) == "" {
+		return fmt.Errorf("content is required")
+	}
+	return db.UpdateNote(a.db, noteID, content)
+}
+
+// DeleteNote removes a note.
+func (a *App) DeleteNote(noteID int64) error {
+	return db.DeleteNote(a.db, noteID)
+}
+
+// -- Summary Bind method --
+
+// GetTodoCounts returns incomplete and total todo counts per project.
+func (a *App) GetTodoCounts() []db.TodoCount {
+	counts, err := db.GetTodoCounts(a.db)
+	if err != nil {
+		log.Printf("get todo counts error: %v", err)
+		return nil
+	}
+	if counts == nil {
+		counts = []db.TodoCount{}
+	}
+	return counts
 }
 
 // --- helpers (not exposed to frontend) ---

@@ -65,6 +65,32 @@ export interface AppConfig {
   scan_roots: string[]
 }
 
+export interface Todo {
+  id: number
+  project_id: number
+  title: string
+  completed: boolean
+  priority: number
+  sort_order: number
+  created_at: string
+  updated_at: string
+}
+
+export interface Note {
+  id: number
+  project_id: number
+  content: string
+  sort_order: number
+  created_at: string
+  updated_at: string
+}
+
+export interface TodoCount {
+  project_id: number
+  count: number
+  total: number
+}
+
 // --- Wails mode helper ---
 
 const isWails = (): boolean =>
@@ -160,4 +186,72 @@ export function getSummary(date?: string): Promise<Summary> {
   if (isWails()) return wail<Summary>('GetSummary', date || '').then(d => d ?? empty)
   const params = date ? `?date=${date}` : ''
   return http<Summary>(`/summary${params}`).then(data => data ?? empty)
+}
+
+// --- Todo & Note API ---
+
+export function listTodos(projectId: number): Promise<Todo[]> {
+  if (isWails()) return wail<Todo[]>('ListTodos', projectId).then(d => d ?? [])
+  return http<Todo[]>(`/todos?project_id=${projectId}`).then(d => d ?? [])
+}
+
+export function createTodo(projectId: number, title: string): Promise<Todo> {
+  if (isWails()) return wail<Todo>('CreateTodo', projectId, title)
+  return http<Todo>('/todos', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ project_id: projectId, title }),
+  })
+}
+
+export function toggleTodo(todoId: number): Promise<void> {
+  if (isWails()) return wail<void>('ToggleTodo', todoId)
+  return http<void>(`/todos/${todoId}/toggle`, { method: 'POST' })
+}
+
+export function deleteTodo(todoId: number): Promise<void> {
+  if (isWails()) return wail<void>('DeleteTodo', todoId)
+  return http<void>(`/todos/${todoId}`, { method: 'DELETE' })
+}
+
+export function reorderTodos(todoIds: number[]): Promise<void> {
+  if (isWails()) return wail<void>('ReorderTodos', todoIds)
+  return http<void>('/todos/reorder', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ todo_ids: todoIds }),
+  })
+}
+
+export function listNotes(projectId: number): Promise<Note[]> {
+  if (isWails()) return wail<Note[]>('ListNotes', projectId).then(d => d ?? [])
+  return http<Note[]>(`/notes?project_id=${projectId}`).then(d => d ?? [])
+}
+
+export function createNote(projectId: number, content: string): Promise<Note> {
+  if (isWails()) return wail<Note>('CreateNote', projectId, content)
+  return http<Note>('/notes', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ project_id: projectId, content }),
+  })
+}
+
+export function updateNote(noteId: number, content: string): Promise<void> {
+  if (isWails()) return wail<void>('UpdateNote', noteId, content)
+  return http<void>(`/notes/${noteId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content }),
+  })
+}
+
+export function deleteNote(noteId: number): Promise<void> {
+  if (isWails()) return wail<void>('DeleteNote', noteId)
+  return http<void>(`/notes/${noteId}`, { method: 'DELETE' })
+}
+
+export function getTodoCounts(): Promise<TodoCount[]> {
+  if (isWails()) return wail<TodoCount[]>('GetTodoCounts').then(d => d ?? [])
+  return http<TodoCount[]>('/todo-counts').then(d => d ?? [])
 }
