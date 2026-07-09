@@ -1,6 +1,6 @@
 [package]
 name = "gitboard"
-version = "0.3.0"
+version = "0.3.1"
 description = "GitBoard - local Git dashboard"
 authors = ["jiangcheng"]
 edition = "2021"
