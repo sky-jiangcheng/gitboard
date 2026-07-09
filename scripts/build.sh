@@ -14,6 +14,7 @@ echo "  Frontend built to web/dist/"
 # Step 2: Build Go binary
 echo "[2/2] Building Go binary..."
 cd "$(dirname "$0")/.."
+export GOPROXY=https://goproxy.cn,direct
 go build -ldflags="-s -w" -o gitboard .
 echo "  Binary: $(pwd)/gitboard"
 
