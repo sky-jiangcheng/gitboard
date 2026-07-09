@@ -98,11 +98,6 @@ jobs:
               -ov -format UDZO \
               "release/gitboard-${{ matrix.target }}.dmg"
           fi
-          # Also create tar.gz of the binary
-          BIN=$(ls build/bin/gitboard* 2>/dev/null | grep -v '\.app' | head -1)
-          if [ -n "$BIN" ]; then
-            tar -czf "release/gitboard-${{ matrix.target }}.tar.gz" -C build/bin "$(basename "$BIN")"
-          fi
           echo "RELEASE_DIR=release" >> $GITHUB_ENV
 
       - name: Package Windows
