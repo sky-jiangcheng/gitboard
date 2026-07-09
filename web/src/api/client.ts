@@ -1,4 +1,8 @@
-const BASE = '/api'
+// api/client.ts — Dual-mode API client:
+//   - When running inside Wails, calls Go methods via window.go
+//   - When running standalone (npm run dev), falls back to HTTP fetch
+
+// --- Type definitions (shared between Wails & HTTP) ---
 
 export interface Project {
   id: number
@@ -61,7 +65,22 @@ export interface AppConfig {
   scan_roots: string[]
 }
 
-async function request<T>(url: string, options?: RequestInit): Promise<T> {
+// --- Wails mode helper ---
+
+const isWails = (): boolean =>
+  typeof window !== 'undefined' && !!(window as any).go?.main?.App
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function wail<T>(method: string, ...args: any[]): Promise<T> {
+  const app = (window as any).go.main.App
+  return app[method](...args) as Promise<T>
+}
+
+// --- HTTP mode helper (standalone dev) ---
+
+const BASE = '/api'
+
+async function http<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(BASE + url, options)
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }))
@@ -70,22 +89,31 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
   return res.json()
 }
 
+// --- Public API ---
+
 export function getProjects(date?: string): Promise<Project[]> {
+  if (isWails()) return wail<Project[]>('GetProjects', date || '').then(d => d ?? [])
   const params = date ? `?date=${date}` : ''
-  return request<Project[]>(`/projects${params}`).then(data => data ?? [])
+  return http<Project[]>(`/projects${params}`).then(data => data ?? [])
 }
 
 export function getProjectDetail(id: number): Promise<ProjectDetail> {
-  return request<ProjectDetail>(`/projects/${id}`)
+  if (isWails()) return wail<ProjectDetail>('GetProjectDetail', id)
+  return http<ProjectDetail>(`/projects/${id}`)
 }
 
 export function getProjectStats(id: number, date?: string): Promise<DailyStat[]> {
+  if (isWails()) return wail<DailyStat[]>('GetProjectStats', id, date || '').then(d => d ?? [])
   const params = date ? `?date=${date}` : ''
-  return request<DailyStat[]>(`/projects/${id}/stats${params}`).then(data => data ?? [])
+  return http<DailyStat[]>(`/projects/${id}/stats${params}`).then(data => data ?? [])
 }
 
-export function updateProjectLevel(id: number, direction: 'up' | 'down'): Promise<{ success: boolean; new_level: number }> {
-  return request(`/projects/${id}/level`, {
+export function updateProjectLevel(
+  id: number,
+  direction: 'up' | 'down'
+): Promise<{ success: boolean; new_level: number }> {
+  if (isWails()) return wail('UpdateProjectLevel', id, direction)
+  return http(`/projects/${id}/level`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ direction }),
@@ -93,15 +121,20 @@ export function updateProjectLevel(id: number, direction: 'up' | 'down'): Promis
 }
 
 export function triggerScan(): Promise<{ success: boolean; repos_found: number; projects: number }> {
-  return request('/scan', { method: 'POST' })
+  if (isWails()) return wail('TriggerScan')
+  return http('/scan', { method: 'POST' })
 }
 
 export function getConfig(): Promise<AppConfig> {
-  return request<AppConfig>('/config')
+  if (isWails()) return wail<AppConfig>('GetConfig')
+  return http<AppConfig>('/config')
 }
 
 export function updateConfig(key: string, value: string): Promise<{ success: boolean }> {
-  return request('/config', {
+  if (isWails()) {
+    return wail<{ success: boolean }>('UpdateConfig', key, value).catch(() => ({ success: false }))
+  }
+  return http('/config', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ key, value }),
@@ -109,7 +142,10 @@ export function updateConfig(key: string, value: string): Promise<{ success: boo
 }
 
 export function updateScanRoots(scan_roots: string[]): Promise<{ success: boolean }> {
-  return request('/config', {
+  if (isWails()) {
+    return wail<{ success: boolean }>('UpdateScanRoots', scan_roots).catch(() => ({ success: false }))
+  }
+  return http('/config', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ scan_roots }),
@@ -117,9 +153,11 @@ export function updateScanRoots(scan_roots: string[]): Promise<{ success: boolea
 }
 
 export function getSummary(date?: string): Promise<Summary> {
-  const params = date ? `?date=${date}` : ''
-  return request<Summary>(`/summary${params}`).then(data => data ?? {
+  const empty: Summary = {
     date: '', repo_count: 0, total_files: 0, total_added: 0,
     total_deleted: 0, my_added: 0, my_deleted: 0, my_files: 0, is_workday: false,
-  })
+  }
+  if (isWails()) return wail<Summary>('GetSummary', date || '').then(d => d ?? empty)
+  const params = date ? `?date=${date}` : ''
+  return http<Summary>(`/summary${params}`).then(data => data ?? empty)
 }

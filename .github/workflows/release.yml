@@ -1,4 +1,4 @@
-name: Build and Release (Tauri)
+name: Build and Release (Wails)
 
 on:
   push:
@@ -13,9 +13,6 @@ concurrency:
 permissions:
   contents: write
 
-env:
-  CARGO_TERM_COLOR: always
-
 jobs:
   build:
     name: ${{ matrix.target }}
@@ -24,26 +21,22 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - target: x86_64-unknown-linux-gnu
+          - target: linux-amd64
             runner: ubuntu-latest
             goos: linux
             goarch: amd64
-            ext: ""
-          - target: x86_64-apple-darwin
+          - target: darwin-amd64
             runner: macos-13
             goos: darwin
             goarch: amd64
-            ext: ""
-          - target: aarch64-apple-darwin
+          - target: darwin-arm64
             runner: macos-latest
             goos: darwin
             goarch: arm64
-            ext: ""
-          - target: x86_64-pc-windows-msvc
+          - target: windows-amd64
             runner: windows-latest
             goos: windows
             goarch: amd64
-            ext: .exe
 
     steps:
       - name: Checkout
@@ -64,10 +57,14 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
+            libgtk-3-dev \
             libwebkit2gtk-4.1-dev \
-            libappindicator3-dev \
+            libayatana-appindicator3-dev \
             librsvg2-dev \
             patchelf
+
+      - name: Install Wails CLI
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
 
       - name: Build Frontend
         run: |
@@ -75,29 +72,54 @@ jobs:
           npm ci
           npm run build
 
-      - name: Build Go sidecar binary
-        env:
-          GOOS: ${{ matrix.goos }}
-          GOARCH: ${{ matrix.goarch }}
+      - name: Build Wails app
         run: |
-          mkdir -p bin
-          go build -ldflags="-s -w" \
-            -o "bin/gitboard${{ matrix.ext }}" .
+          export PATH=$PATH:$(go env GOPATH)/bin
+          wails build -platform ${{ matrix.goos }}/${{ matrix.goarch }} -clean
 
-      - name: Setup Rust target
-        run: rustup target add ${{ matrix.target }}
+      - name: Package Linux
+        if: runner.os == 'Linux'
+        run: |
+          cd build/bin
+          mkdir -p release
+          tar -czf "release/gitboard-linux-amd64.tar.gz" gitboard
+          echo "RELEASE_DIR=build/bin/release" >> $GITHUB_ENV
 
-      - name: Install Tauri CLI
-        run: npm install @tauri-apps/cli@^2
+      - name: Package macOS
+        if: runner.os == 'macOS'
+        run: |
+          mkdir -p release
+          # Wails produces .app bundle in build/bin/
+          APP=$(ls -d build/bin/*.app 2>/dev/null | head -1)
+          if [ -n "$APP" ]; then
+            # Create DMG
+            hdiutil create -volname GitBoard \
+              -srcfolder "$APP" \
+              -ov -format UDZO \
+              "release/gitboard-${{ matrix.target }}.dmg"
+          fi
+          # Also create tar.gz of the binary
+          BIN=$(ls build/bin/gitboard* 2>/dev/null | grep -v '\.app' | head -1)
+          if [ -n "$BIN" ]; then
+            tar -czf "release/gitboard-${{ matrix.target }}.tar.gz" -C build/bin "$(basename "$BIN")"
+          fi
+          echo "RELEASE_DIR=release" >> $GITHUB_ENV
 
-      - name: Build Tauri app
-        run: npx tauri build --target ${{ matrix.target }}
+      - name: Package Windows
+        if: runner.os == 'Windows'
+        run: |
+          mkdir release
+          if exist "build\bin\gitboard.exe" (
+            powershell Compress-Archive -Path "build\bin\gitboard.exe" -DestinationPath "release\gitboard-windows-amd64.zip"
+          )
+          echo "RELEASE_DIR=release" >> $env:GITHUB_ENV
+        shell: cmd
 
-      - name: Upload bundle artifacts
+      - name: Upload release artifacts
         uses: actions/upload-artifact@v4
         with:
           name: bundle-${{ matrix.target }}
-          path: src-tauri/target/${{ matrix.target }}/release/bundle/
+          path: ${{ env.RELEASE_DIR }}/
           if-no-files-found: error
 
   create-release:
@@ -120,10 +142,10 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            **/*.dmg
-            **/*.AppImage
-            **/*.deb
-            **/*.msi
-            **/*.zip
-            **/*.tar.gz
+            *.dmg
+            *.AppImage
+            *.deb
+            *.msi
+            *.zip
+            *.tar.gz
           generate_release_notes: true

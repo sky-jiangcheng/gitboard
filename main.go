@@ -2,134 +2,101 @@ package main
 
 import (
 	"embed"
-	"fmt"
-	"io/fs"
 	"log"
-	"net"
-	"net/http"
 	"os"
-	"os/signal"
-	"strconv"
-	"syscall"
-	"time"
 
 	"gitboard/internal/db"
 	"gitboard/internal/platform"
 	"gitboard/internal/scanner"
-	"gitboard/internal/server"
+
+	"github.com/wailsapp/wails/v2"
+	"github.com/wailsapp/wails/v2/pkg/options"
+	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 )
 
-//go:embed web/dist/*
-var embeddedFiles embed.FS
-
-const defaultPort = "28731"
+//go:embed all:web/dist
+var assets embed.FS
 
 func main() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	log.Println("GitBoard starting...")
 
-	// Database (InitDB also inserts default config values)
+	// Open database
 	database, err := db.InitDB("data.db")
 	if err != nil {
 		log.Fatalf("Failed to initialize database: %v", err)
 	}
-	defer database.Close()
 
-	// Default scan root (if no config exists)
-	existingRoots, _ := db.GetScanRoots(database)
-	if len(existingRoots) == 0 {
-		defaultRoots := platform.DefaultScanRoots()
-		for _, root := range defaultRoots {
-			if err := db.AddScanRoot(database, root); err != nil {
-				log.Printf("Warning: failed to add default scan root %s: %v", root, err)
-			}
-		}
-	}
-
-	// Git user
+	// Detect git user
 	gitUser := platform.GetGitUserName()
 	if gitUser != "" {
 		log.Printf("Git user detected: %s", gitUser)
-	}
-
-	// Parse scan depth, validate range
-	scanDepthStr, _ := db.GetConfig(database, "scan_depth")
-	scanDepth, err := strconv.Atoi(scanDepthStr)
-	if err != nil || scanDepth < 1 || scanDepth > 10 {
-		log.Printf("Invalid scan depth '%s', using default 5", scanDepthStr)
-		scanDepth = 5
-	}
-
-	// Auto-scan on startup
-	roots, _ := db.GetScanRoots(database)
-	if len(roots) == 0 {
-		log.Println("No scan roots configured. Add paths via Settings page.")
 	} else {
-		log.Printf("Auto-scanning with depth %d at roots: %v", scanDepth, roots)
-		repos, err := scanner.ScanRepositories(roots, scanDepth)
+		log.Println("No git user detected; personal stats will be empty")
+	}
+
+	// Default scan root and auto-scan
+	existingRoots, _ := db.GetScanRoots(database)
+	if len(existingRoots) == 0 {
+		homeDir, err := os.UserHomeDir()
+		defaultRoots := []string{homeDir}
 		if err != nil {
-			log.Printf("Scan error: %v", err)
+			defaultRoots = []string{"/"}
+		}
+		log.Println("First launch — auto-scanning repositories...")
+		for _, root := range defaultRoots {
+			log.Printf("  Scanning: %s", root)
+		}
+		depthStr, _ := db.GetConfig(database, "scan_depth")
+		maxDepth := 5
+		if d, err := parseInt(depthStr); err == nil && d > 0 && d <= 10 {
+			maxDepth = d
+		}
+		// Set default scan roots
+		for _, root := range defaultRoots {
+			if err := db.AddScanRoot(database, root); err != nil {
+				log.Printf("  add scan root error: %v", err)
+			}
+		}
+		repos, err := scanner.ScanRepositories(defaultRoots, maxDepth)
+		if err != nil {
+			log.Printf("Auto-scan error: %v", err)
 		} else {
 			log.Printf("Found %d repositories", len(repos))
 		}
 	}
 
-	// Server
-	port := defaultPort
-	if envPort := os.Getenv("PORT"); envPort != "" {
-		if _, err := strconv.Atoi(envPort); err == nil {
-			port = envPort
-		}
-	}
+	// Create app with dependencies
+	app := NewApp(database, gitUser)
 
-	srv := server.NewServer(database, gitUser)
-
-	// Serve embedded frontend
-	staticFS, err := fs.Sub(embeddedFiles, "web/dist")
+	// Launch Wails
+	err = wails.Run(&options.App{
+		Title:  "GitBoard",
+		Width:  1280,
+		Height: 800,
+		MinWidth:  800,
+		MinHeight: 600,
+		AssetServer: &assetserver.Options{
+			Assets: assets,
+		},
+		OnStartup:  app.startup,
+		OnShutdown: app.shutdown,
+		Bind: []interface{}{
+			app,
+		},
+	})
 	if err != nil {
-		log.Fatalf("Failed to load embedded frontend: %v", err)
+		log.Fatalf("Error: %v", err)
 	}
-	srv.RegisterStatic(staticFS)
+}
 
-	addr := server.FormatAddr(port)
-	listener, err := net.Listen("tcp", addr)
-		if err != nil {
-			//nolint:gosec // port is validated by strconv.Atoi above
-			log.Printf("Failed to listen on port %s: %v", port, err)
-			os.Exit(1)
+func parseInt(s string) (int, error) {
+	v := 0
+	for _, c := range s {
+		if c < '0' || c > '9' {
+			return 0, nil
 		}
-
-	actualPort := strconv.Itoa(listener.Addr().(*net.TCPAddr).Port)
-	url := fmt.Sprintf("http://localhost:%s", actualPort)
-	log.Printf("Server running at %s", url)
-
-	// Open browser (URL is internally generated, always safe)
-	go func() {
-		if err := platform.OpenBrowser(url); err != nil {
-			log.Printf("Failed to open browser: %v", err)
-		}
-	}()
-
-	// Graceful shutdown
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-
-	httpServer := &http.Server{
-		Handler:      srv.Handler(),
-		ReadTimeout:  10 * time.Second,
-		WriteTimeout: 30 * time.Second,
-		IdleTimeout:  60 * time.Second,
+		v = v*10 + int(c-'0')
 	}
-
-	go func() {
-		if err := httpServer.Serve(listener); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("Server error: %v", err)
-		}
-	}()
-
-	sig := <-sigChan
-	log.Printf("Received signal %v, shutting down...", sig)
-	if err := httpServer.Close(); err != nil {
-		log.Printf("Server close error: %v", err)
-	}
+	return v, nil
 }

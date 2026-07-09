@@ -133,19 +133,19 @@
         <div class="os">&#x1F34E;</div>
         <h4>macOS</h4>
         <p style="color:#666;font-size:13px;margin-bottom:12px">Intel / Apple Silicon</p>
-        <p style="color:#999;font-size:12px">下载 <code style="background:#eee;padding:1px 4px;border-radius:4px">.dmg</code> 文件</p>
+        <p style="color:#999;font-size:12px">下载 <code style="background:#eee;padding:1px 4px;border-radius:4px">.dmg</code> 或 <code style="background:#eee;padding:1px 4px;border-radius:4px">.tar.gz</code></p>
       </div>
       <div class="download-card">
         <div class="os">&#x1F427;</div>
         <h4>Windows</h4>
         <p style="color:#666;font-size:13px;margin-bottom:12px">x64</p>
-        <p style="color:#999;font-size:12px">下载 <code style="background:#eee;padding:1px 4px;border-radius:4px">.msi</code> 或 <code style="background:#eee;padding:1px 4px;border-radius:4px">.exe</code></p>
+        <p style="color:#999;font-size:12px">下载 <code style="background:#eee;padding:1px 4px;border-radius:4px">.zip</code>（含 .exe）</p>
       </div>
       <div class="download-card">
         <div class="os">&#x1F427;</div>
         <h4>Linux</h4>
         <p style="color:#666;font-size:13px;margin-bottom:12px">amd64</p>
-        <p style="color:#999;font-size:12px">下载 <code style="background:#eee;padding:1px 4px;border-radius:4px">.AppImage</code> 或 <code style="background:#eee;padding:1px 4px;border-radius:4px">.deb</code></p>
+        <p style="color:#999;font-size:12px">下载 <code style="background:#eee;padding:1px 4px;border-radius:4px">.tar.gz</code></p>
       </div>
     </div>
 
@@ -156,10 +156,31 @@
       <div style="background:#0d1117;border-radius:8px;padding:20px;margin-bottom:16px">
         <h4 style="color:#4caf50;margin-bottom:12px">macOS</h4>
         <ol style="color:#ccc;font-size:14px;padding-left:20px;line-height:2">
-          <li>从 Releases 下载 <code style="background:#333;padding:2px 6px;border-radius:4px;color:#4caf50">GitBoard_*_x64.dmg</code>（Intel）或 <code style="background:#333;padding:2px 6px;border-radius:4px;color:#4caf50">aarch64.dmg</code>（M 系列）</li>
+          <li>从 Releases 下载 <code style="background:#333;padding:2px 6px;border-radius:4px;color:#4caf50">gitboard-darwin-amd64.dmg</code>（Intel）或 <code style="background:#333;padding:2px 6px;border-radius:4px;color:#4caf50">darwin-arm64.dmg</code>（M 系列）</li>
           <li>双击 .dmg 打开，将 GitBoard.app 拖入 Applications</li>
-          <li>首次打开：右键点击 > <strong>打开</strong>（绕过 Gatekeeper 未签名提示）</li>
+          <li>首次打开：右键点击 &gt; <strong>打开</strong>（绕过 Gatekeeper 未签名提示）</li>
         </ol>
+        <p style="color:#999;font-size:13px;margin-top:8px">或使用二进制：</p>
+        <code style="display:block;background:#000;padding:12px;border-radius:6px;font-size:13px;color:#4caf50">tar -xzf gitboard-darwin-*.tar.gz && ./gitboard</code>
+      </div>
+
+      <!-- Windows -->
+      <div style="background:#0d1117;border-radius:8px;padding:20px;margin-bottom:16px">
+        <h4 style="color:#4caf50;margin-bottom:12px">Windows</h4>
+        <ol style="color:#ccc;font-size:14px;padding-left:20px;line-height:2">
+          <li>从 Releases 下载 <code style="background:#333;padding:2px 6px;border-radius:4px;color:#4caf50">gitboard-windows-amd64.zip</code></li>
+          <li>解压后双击 <code style="background:#333;padding:2px 6px;border-radius:4px;color:#4caf50">gitboard.exe</code> 运行</li>
+          <li>Windows Defender 弹出警告时，点击 <strong>更多信息</strong> &gt; <strong>仍要运行</strong></li>
+        </ol>
+      </div>
+
+      <!-- Linux -->
+      <div style="background:#0d1117;border-radius:8px;padding:20px;margin-bottom:16px">
+        <h4 style="color:#4caf50;margin-bottom:12px">Linux</h4>
+        <p style="color:#ccc;font-size:14px;margin-bottom:8px">下载 .tar.gz 后：</p>
+        <code style="display:block;background:#000;padding:12px;border-radius:6px;font-size:13px;color:#4caf50">tar -xzf gitboard-linux-amd64.tar.gz && chmod +x gitboard && ./gitboard</code>
+        <p style="color:#999;font-size:13px;margin-top:12px">系统安装（可选）：</p>
+        <code style="display:block;background:#000;padding:12px;border-radius:6px;font-size:13px;color:#4caf50">sudo mv gitboard /usr/local/bin/</code>
       </div>
 
       <!-- Windows -->
@@ -197,7 +218,7 @@
     <div class="features">
       <div class="feature-card">
         <h3>1. 启动应用</h3>
-        <p>下载后双击运行，应用会自动打开浏览器访问本地面板（默认端口 18731）。</p>
+        <p>下载后双击运行，GitBoard 将以原生窗口打开，无需浏览器。</p>
       </div>
       <div class="feature-card">
         <h3>2. 配置扫描目录</h3>
