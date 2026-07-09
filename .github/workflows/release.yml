@@ -107,13 +107,13 @@ jobs:
 
       - name: Package Windows
         if: runner.os == 'Windows'
+        shell: bash
         run: |
-          mkdir release
-          if exist "build\bin\gitboard.exe" (
-            powershell Compress-Archive -Path "build\bin\gitboard.exe" -DestinationPath "release\gitboard-windows-amd64.zip"
-          )
-          echo "RELEASE_DIR=release" >> $env:GITHUB_ENV
-        shell: cmd
+          mkdir -p release
+          if [ -f "build/bin/gitboard.exe" ]; then
+            powershell Compress-Archive -Path "build/bin/gitboard.exe" -DestinationPath "release/gitboard-windows-amd64.zip"
+          fi
+          echo "RELEASE_DIR=release" >> "$GITHUB_ENV"
 
       - name: Upload release artifacts
         uses: actions/upload-artifact@v4
