@@ -77,8 +77,8 @@ jobs:
             go install github.com/wailsapp/wails/v2/cmd/wails@v2.13.0
             wails build -platform ${{ matrix.goos }}/${{ matrix.goarch }} -clean -tags webkit2_41
           elif [ "${{ matrix.goarch }}" = "amd64" ]; then
-            arch -x86_64 go install github.com/wailsapp/wails/v2/cmd/wails@v2.13.0
-            arch -x86_64 wails build -platform ${{ matrix.goos }}/${{ matrix.goarch }} -clean
+            GOOS=darwin GOARCH=amd64 go install -o $(go env GOPATH)/bin/wails-amd64 github.com/wailsapp/wails/v2/cmd/wails@v2.13.0
+            arch -x86_64 $(go env GOPATH)/bin/wails-amd64 build -platform ${{ matrix.goos }}/${{ matrix.goarch }} -clean
           else
             go install github.com/wailsapp/wails/v2/cmd/wails@v2.13.0
             wails build -platform ${{ matrix.goos }}/${{ matrix.goarch }} -clean
