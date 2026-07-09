@@ -179,6 +179,4 @@ GitBoard 使用智能分组算法自动识别项目边界：
 
 设置环境变量 `PORT=自定义端口` 后启动，或直接修改 `defaultPort` 常量重新编译。
 
-## License
 
-MIT

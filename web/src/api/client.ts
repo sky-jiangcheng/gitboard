@@ -72,7 +72,7 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
 
 export function getProjects(date?: string): Promise<Project[]> {
   const params = date ? `?date=${date}` : ''
-  return request<Project[]>(`/projects${params}`)
+  return request<Project[]>(`/projects${params}`).then(data => data ?? [])
 }
 
 export function getProjectDetail(id: number): Promise<ProjectDetail> {
@@ -81,7 +81,7 @@ export function getProjectDetail(id: number): Promise<ProjectDetail> {
 
 export function getProjectStats(id: number, date?: string): Promise<DailyStat[]> {
   const params = date ? `?date=${date}` : ''
-  return request<DailyStat[]>(`/projects/${id}/stats${params}`)
+  return request<DailyStat[]>(`/projects/${id}/stats${params}`).then(data => data ?? [])
 }
 
 export function updateProjectLevel(id: number, direction: 'up' | 'down'): Promise<{ success: boolean; new_level: number }> {
@@ -118,5 +118,8 @@ export function updateScanRoots(scan_roots: string[]): Promise<{ success: boolea
 
 export function getSummary(date?: string): Promise<Summary> {
   const params = date ? `?date=${date}` : ''
-  return request<Summary>(`/summary${params}`)
+  return request<Summary>(`/summary${params}`).then(data => data ?? {
+    date: '', repo_count: 0, total_files: 0, total_added: 0,
+    total_deleted: 0, my_added: 0, my_deleted: 0, my_files: 0, is_workday: false,
+  })
 }
