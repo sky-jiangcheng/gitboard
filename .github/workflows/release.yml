@@ -100,11 +100,17 @@ jobs:
           # Wails produces .app bundle in build/bin/
           APP=$(ls -d build/bin/*.app 2>/dev/null | head -1)
           if [ -n "$APP" ]; then
+            APP_NAME=$(basename "$APP")
+            # Create a staging folder with app + Applications symlink
+            STAGING=$(mktemp -d)
+            cp -R "$APP" "$STAGING/"
+            ln -s /Applications "$STAGING/Applications"
             # Create DMG
-            hdiutil create -volname GitBoard \
-              -srcfolder "$APP" \
+            hdiutil create -volname "$APP_NAME" \
+              -srcfolder "$STAGING" \
               -ov -format UDZO \
               "release/gitboard-${{ matrix.target }}.dmg"
+            rm -rf "$STAGING"
           fi
           echo "RELEASE_DIR=release" >> $GITHUB_ENV
 
