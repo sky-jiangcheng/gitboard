@@ -42,20 +42,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Generate app icons from SVG
-        shell: bash
-        run: |
-          if [ -f "build/icon.svg" ]; then
-            npm install --no-save sharp 2>/dev/null || npm install --no-save --platform=${{ matrix.goos }} --arch=${{ matrix.goarch }} sharp 2>/dev/null || true
-            if node scripts/generate-icons.mjs 2>&1; then
-              echo "Icons generated successfully"
-              ls -la build/icons/ || true
-              ls -la build/appicon.png || true
-            else
-              echo "Icon generation failed, continuing without custom icons"
-            fi
-          fi
-
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
@@ -76,6 +62,24 @@ jobs:
             libayatana-appindicator3-dev \
             librsvg2-dev \
             patchelf
+
+      - name: Generate app icons from SVG
+        shell: bash
+        run: |
+          if [ -f "build/icon.svg" ]; then
+            # Initialize a temp package.json in root so npm install works
+            if [ ! -f "package.json" ]; then
+              node -e "require('fs').writeFileSync('package.json', JSON.stringify({name:'gitboard-build',version:'0.0.0',private:true},null,2))"
+            fi
+            npm install --no-save sharp 2>&1 || true
+            if node scripts/generate-icons.mjs 2>&1; then
+              echo "Icons generated successfully"
+              ls -la build/icons/ || true
+              ls -la build/appicon.png || true
+            else
+              echo "Icon generation failed, continuing without custom icons"
+            fi
+          fi
 
       - name: Build Frontend
         run: |
