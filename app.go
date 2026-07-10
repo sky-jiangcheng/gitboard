@@ -19,9 +19,11 @@ import (
 // App is the main application struct whose public methods are exposed to the
 // frontend via Wails Bind. The ctx is set during OnStartup.
 type App struct {
-	ctx     context.Context
-	db      *sql.DB
-	gitUser string
+	ctx        context.Context
+	db         *sql.DB
+	gitUser    string
+	scanning   bool
+	scanCancel context.CancelFunc
 }
 
 // NewApp creates a new App instance with dependencies injected.
@@ -35,10 +37,14 @@ func NewApp(database *sql.DB, gitUser string) *App {
 // startup is called at application startup.
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+	go a.ensureHistoryBackfilled()
 }
 
 // shutdown is called when the application exits.
 func (a *App) shutdown(ctx context.Context) {
+	if a.scanCancel != nil {
+		a.scanCancel()
+	}
 	if a.db != nil {
 		a.db.Close()
 	}
@@ -206,8 +212,44 @@ type ScanResult struct {
 	Projects   int  `json:"projects"`
 }
 
-// TriggerScan runs a full repository scan and re-groups projects.
+// ScanStatus holds the current scanning progress.
+type ScanStatus struct {
+	Running  bool   `json:"running"`
+	Message  string `json:"message"`
+	Progress int    `json:"progress"`
+	Total    int    `json:"total"`
+}
+
+// TriggerScan starts an async full repository scan and returns immediately.
 func (a *App) TriggerScan() (*ScanResult, error) {
+	if a.scanning {
+		return nil, fmt.Errorf("scan already in progress")
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	a.scanCancel = cancel
+	a.scanning = true
+
+	go func() {
+		defer func() {
+			a.scanning = false
+			a.scanCancel = nil
+		}()
+		a.runFullScan(ctx)
+	}()
+
+	return &ScanResult{Success: true}, nil
+}
+
+// GetScanStatus returns the current scan progress.
+func (a *App) GetScanStatus() *ScanStatus {
+	return &ScanStatus{
+		Running: a.scanning,
+	}
+}
+
+// runFullScan performs the actual scan + history backfill.
+func (a *App) runFullScan(ctx context.Context) {
 	depthStr, _ := db.GetConfig(a.db, "scan_depth")
 	maxDepth, _ := strconv.Atoi(depthStr)
 	if maxDepth <= 0 || maxDepth > 10 {
@@ -217,7 +259,8 @@ func (a *App) TriggerScan() (*ScanResult, error) {
 	roots, _ := db.GetScanRoots(a.db)
 	repos, err := scanner.ScanRepositories(roots, maxDepth)
 	if err != nil {
-		return nil, fmt.Errorf("scan failed")
+		log.Printf("scan error: %v", err)
+		return
 	}
 
 	groups := grouper.GroupRepositories(repos)
@@ -230,6 +273,11 @@ func (a *App) TriggerScan() (*ScanResult, error) {
 	}
 
 	for _, group := range groups {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
 		projectID, err := db.UpsertProject(a.db, group.Name, group.RootPath, 0, group.IsAutoGrouped)
 		if err != nil {
 			log.Printf("upsert project error: %v", err)
@@ -242,8 +290,32 @@ func (a *App) TriggerScan() (*ScanResult, error) {
 		}
 	}
 
-	a.refreshAllStats(stats.GetTodayDate())
-	return &ScanResult{Success: true, ReposFound: len(repos), Projects: len(groups)}, nil
+	a.refreshAllStatsWithCancel(ctx)
+	log.Printf("scan complete: %d repos, %d projects", len(repos), len(groups))
+}
+
+// ensureHistoryBackfilled checks if we have a full year of stats history,
+// and backfills if missing. Runs in background at startup.
+func (a *App) ensureHistoryBackfilled() {
+	repos, err := db.GetAllRepositories(a.db)
+	if err != nil || len(repos) == 0 {
+		return
+	}
+
+	oneYearAgo := time.Now().AddDate(0, 0, -365).Format("2006-01-02")
+	hasAll, _ := db.HasStatsSince(a.db, oneYearAgo, a.gitUser)
+	if hasAll {
+		return
+	}
+
+	log.Printf("backfilling git history...")
+	a.scanning = true
+	ctx, cancel := context.WithCancel(context.Background())
+	a.scanCancel = cancel
+	a.refreshAllStatsWithCancel(ctx)
+	a.scanning = false
+	a.scanCancel = nil
+	log.Printf("history backfill complete")
 }
 
 // ConfigData holds the application configuration sent to the frontend.
@@ -483,7 +555,7 @@ func (a *App) GetTodoCounts() []db.TodoCount {
 
 // --- helpers (not exposed to frontend) ---
 
-func (a *App) refreshAllStats(date string) {
+func (a *App) refreshAllStatsWithCancel(ctx context.Context) {
 	repos, err := db.GetAllRepositories(a.db)
 	if err != nil {
 		return
@@ -493,7 +565,13 @@ func (a *App) refreshAllStats(date string) {
 	endDate := stats.GetTodayDate()
 
 	for _, repo := range repos {
-		// Backfill all authors for the past year
+		select {
+		case <-ctx.Done():
+			log.Printf("stats refresh cancelled")
+			return
+		default:
+		}
+
 		allEntries, err := stats.QueryStatsRange(repo.Path, startDate, endDate, "")
 		if err == nil && allEntries != nil {
 			for _, e := range allEntries {
@@ -504,7 +582,6 @@ func (a *App) refreshAllStats(date string) {
 			}
 		}
 
-		// Backfill git user stats for the past year
 		if a.gitUser != "" {
 			myEntries, err := stats.QueryStatsRange(repo.Path, startDate, endDate, a.gitUser)
 			if err == nil && myEntries != nil {

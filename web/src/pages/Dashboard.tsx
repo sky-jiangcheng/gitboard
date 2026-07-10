@@ -1,5 +1,5 @@
-import { useState, useEffect, useMemo } from 'react'
-import { getProjects, getSummary, triggerScan, getTodoCounts, Project, Summary, TodoCount } from '../api/client'
+import { useState, useEffect, useRef, useMemo } from 'react'
+import { getProjects, getSummary, triggerScan, getTodoCounts, getScanStatus, Project, Summary, TodoCount } from '../api/client'
 import SummaryBar from '../components/SummaryBar'
 import Heatmap from '../components/Heatmap'
 import StatusBar from '../components/StatusBar'
@@ -31,6 +31,7 @@ function Dashboard() {
   const [sortKey, setSortKey] = useState<SortKey>('my_added')
   const [confirmScan, setConfirmScan] = useState(false)
   const [todoCounts, setTodoCounts] = useState<TodoCount[]>([])
+  const pollTimer = useRef<number | null>(null)
 
   const fetchData = async (selectedDate: string) => {
     setLoading(true)
@@ -54,20 +55,53 @@ function Dashboard() {
 
   useEffect(() => {
     fetchData(date)
+    checkScanStatus()
+    return () => {
+      if (pollTimer.current) clearInterval(pollTimer.current)
+    }
   }, [date])
+
+  const checkScanStatus = async () => {
+    try {
+      const status = await getScanStatus()
+      if (status.running) {
+        setScanning(true)
+        if (!pollTimer.current) {
+          pollTimer.current = window.setInterval(async () => {
+            const s = await getScanStatus()
+            if (!s.running) {
+              if (pollTimer.current) clearInterval(pollTimer.current)
+              pollTimer.current = null
+              setScanning(false)
+              fetchData(date)
+            }
+          }, 2000)
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }
 
   const handleScan = async () => {
     setConfirmScan(false)
-    setScanning(true)
     setError('')
     try {
       await triggerScan()
-      await fetchData(date)
+      setScanning(true)
+      if (pollTimer.current) clearInterval(pollTimer.current)
+      pollTimer.current = window.setInterval(async () => {
+        const s = await getScanStatus()
+        if (!s.running) {
+          if (pollTimer.current) clearInterval(pollTimer.current)
+          pollTimer.current = null
+          setScanning(false)
+          fetchData(date)
+        }
+      }, 2000)
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : '扫描失败'
       setError(msg)
-    } finally {
-      setScanning(false)
     }
   }
 

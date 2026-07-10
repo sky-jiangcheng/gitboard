@@ -165,9 +165,21 @@ export function updateProjectLevel(
   })
 }
 
-export function triggerScan(): Promise<{ success: boolean; repos_found: number; projects: number }> {
+export function triggerScan(): Promise<{ success: boolean }> {
   if (isWails()) return wail('TriggerScan')
   return http('/scan', { method: 'POST' })
+}
+
+export interface ScanStatus {
+  running: boolean
+  message: string
+  progress: number
+  total: number
+}
+
+export function getScanStatus(): Promise<ScanStatus> {
+  if (isWails()) return wail<ScanStatus>('GetScanStatus').then(d => d ?? { running: false, message: '', progress: 0, total: 0 })
+  return http<ScanStatus>('/scan/status').then(d => d ?? { running: false, message: '', progress: 0, total: 0 })
 }
 
 export function getConfig(): Promise<AppConfig> {

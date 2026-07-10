@@ -587,6 +587,23 @@ func GetHeatmapData(dbConn *sql.DB, startDate, endDate, author string) ([]Heatma
 	return days, rows.Err()
 }
 
+// HasStatsSince checks if we have daily stats for the given author going back
+// to at least the given date. Returns true if stats exist on or before startDate.
+func HasStatsSince(dbConn *sql.DB, startDate, author string) (bool, error) {
+	var earliest string
+	query := `
+		SELECT MIN(stat_date) FROM daily_stats WHERE author = ?
+	`
+	err := dbConn.QueryRow(query, author).Scan(&earliest)
+	if err != nil {
+		return false, err
+	}
+	if earliest == "" {
+		return false, nil
+	}
+	return earliest <= startDate, nil
+}
+
 // -- TodoCounts --
 
 // TodoCount holds the todo summary for a project.
