@@ -1,7 +1,9 @@
+import { useEffect } from 'react'
 import { HashRouter, Routes, Route, Link, useLocation } from 'react-router-dom'
 import Dashboard from './pages/Dashboard'
 import ProjectDetail from './pages/ProjectDetail'
 import Settings from './pages/Settings'
+import { applyTheme, getStoredTheme, listenSystemTheme } from './utils/theme'
 
 function NavBar() {
   const { pathname } = useLocation()
@@ -22,6 +24,18 @@ function NavBar() {
 }
 
 function App() {
+  useEffect(() => {
+    const mode = getStoredTheme()
+    applyTheme(mode)
+
+    return listenSystemTheme(() => {
+      const current = getStoredTheme()
+      if (current === 'system') {
+        applyTheme('system')
+      }
+    })
+  }, [])
+
   return (
     <HashRouter>
       <div className="app">
