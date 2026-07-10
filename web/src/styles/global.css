@@ -95,9 +95,10 @@ body {
 }
 
 .app {
-  min-height: 100vh;
+  height: 100vh;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 /* --- Scrollbar --- */
@@ -198,6 +199,9 @@ body {
   margin: 0 auto;
   padding: 32px;
   width: 100%;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 /* --- Cards (shared base) --- */
@@ -247,6 +251,24 @@ body {
 .red { color: var(--danger); }
 
 .summary-value.todo { color: var(--warning); }
+
+/* --- Dashboard layout (fixed header + scrollable content) --- */
+.dashboard {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.dashboard-fixed {
+  flex-shrink: 0;
+}
+
+.dashboard-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding-right: 4px; /* space for scrollbar */
+}
 
 /* --- Controls --- */
 .dashboard-controls {

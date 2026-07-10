@@ -102,88 +102,93 @@ function Dashboard() {
 
   return (
     <div className="dashboard">
-      <SummaryBar summary={summary} globalTodoCount={globalTodoCount} />
-      <Heatmap />
+      <div className="dashboard-fixed">
+        <SummaryBar summary={summary} globalTodoCount={globalTodoCount} />
+        <Heatmap />
 
-      <div className="dashboard-controls">
-        <DatePicker value={date} onChange={setDate} />
-        <div className="dashboard-actions">
-          <div className="sort-control">
-            <label>排序：</label>
-            <select
-              value={sortKey}
-              onChange={(e) => setSortKey(e.target.value as SortKey)}
-              className="form-input sort-select"
-            >
-              {SORT_OPTIONS.map((opt) => (
-                <option key={opt.key} value={opt.key}>{opt.label}</option>
-              ))}
-            </select>
-          </div>
-          {confirmScan ? (
-            <div className="confirm-group">
-              <span className="confirm-text">确定重新扫描？</span>
-              <button className="btn btn-primary btn-sm" onClick={handleScan} disabled={scanning}>
-                确认
-              </button>
-              <button className="btn btn-sm" onClick={() => setConfirmScan(false)}>
-                取消
-              </button>
+        <div className="dashboard-controls">
+          <DatePicker value={date} onChange={setDate} />
+          <div className="dashboard-actions">
+            <div className="sort-control">
+              <label>排序：</label>
+              <select
+                value={sortKey}
+                onChange={(e) => setSortKey(e.target.value as SortKey)}
+                className="form-input sort-select"
+              >
+                {SORT_OPTIONS.map((opt) => (
+                  <option key={opt.key} value={opt.key}>{opt.label}</option>
+                ))}
+              </select>
             </div>
-          ) : (
-            <button className="btn btn-primary" onClick={() => setConfirmScan(true)} disabled={scanning}>
-              {scanning ? '扫描中...' : '重新扫描'}
-            </button>
-          )}
+            {confirmScan ? (
+              <div className="confirm-group">
+                <span className="confirm-text">确定重新扫描？</span>
+                <button className="btn btn-primary btn-sm" onClick={handleScan} disabled={scanning}>
+                  确认
+                </button>
+                <button className="btn btn-sm" onClick={() => setConfirmScan(false)}>
+                  取消
+                </button>
+              </div>
+            ) : (
+              <button className="btn btn-primary" onClick={() => setConfirmScan(true)} disabled={scanning}>
+                {scanning ? '扫描中...' : '重新扫描'}
+              </button>
+            )}
+          </div>
         </div>
+
+        {error && (
+          <div className="error-banner">
+            <span>{error}</span>
+            <button className="btn btn-sm" onClick={() => fetchData(date)}>重试</button>
+          </div>
+        )}
       </div>
 
-      {error && (
-        <div className="error-banner">
-          <span>{error}</span>
-          <button className="btn btn-sm" onClick={() => fetchData(date)}>重试</button>
-        </div>
-      )}
-
-      {loading ? (
-        <div className="project-grid">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="project-card skeleton-card">
-              <div className="card-header">
-                <div className="skeleton skeleton-text" style={{width: '60%', height: 20}} />
+      <div className="dashboard-scroll">
+        {loading ? (
+          <div className="project-grid">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="project-card skeleton-card">
+                <div className="card-header">
+                  <div className="skeleton skeleton-text" style={{width: '60%', height: 20}} />
+                </div>
+                <div className="card-grid">
+                  {Array.from({ length: 4 }).map((_, j) => (
+                    <div key={j} className="card-stat">
+                      <div className="skeleton skeleton-text" style={{width: 32, height: 10}} />
+                      <div className="skeleton skeleton-text" style={{width: 40, height: 16}} />
+                    </div>
+                  ))}
+                </div>
               </div>
-              <div className="card-body">
-                {Array.from({ length: 5 }).map((_, j) => (
-                  <div key={j} className="stat-row">
-                    <div className="skeleton skeleton-text" style={{width: 48}} />
-                    <div className="skeleton skeleton-text" style={{width: 36}} />
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : sorted.length === 0 ? (
-        <div className="empty-state">
-          <div className="empty-icon">&#128269;</div>
-          <h3>暂无项目数据</h3>
-          <p>GitBoard 尚未扫描到任何 Git 仓库。请先配置扫描目录。</p>
-          <div className="empty-actions">
-            <button className="btn btn-primary" onClick={() => setConfirmScan(true)}>
-              开始扫描
-            </button>
-            <a href="/settings" className="btn btn-secondary">
-              配置目录
-            </a>
+            ))}
           </div>
-        </div>
-      ) : (
-        <div className="project-grid">
-          {sorted.map((p) => (
-            <ProjectCard key={p.id} project={p} date={date} todoCount={todoMap.get(p.id)} />
-          ))}
-        </div>
-      )}
+        ) : sorted.length === 0 ? (
+          <div className="empty-state">
+            <div className="empty-icon">&#128269;</div>
+            <h3>暂无项目数据</h3>
+            <p>GitBoard 尚未扫描到任何 Git 仓库。请先配置扫描目录。</p>
+            <div className="empty-actions">
+              <button className="btn btn-primary" onClick={() => setConfirmScan(true)}>
+                开始扫描
+              </button>
+              <a href="/settings" className="btn btn-secondary">
+                配置目录
+              </a>
+            </div>
+          </div>
+        ) : (
+          <div className="project-grid">
+            {sorted.map((p) => (
+              <ProjectCard key={p.id} project={p} date={date} todoCount={todoMap.get(p.id)} />
+            ))}
+          </div>
+        )}
+      </div>
+
       <StatusBar />
     </div>
   )
