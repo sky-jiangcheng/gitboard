@@ -22,7 +22,7 @@ func main() {
 	log.Println("GitBoard starting...")
 
 	// Open database
-	database, err := db.InitDB("data.db")
+	database, err := db.InitDB(platform.GetDbPath())
 	if err != nil {
 		log.Fatalf("Failed to initialize database: %v", err)
 	}
