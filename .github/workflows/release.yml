@@ -42,6 +42,71 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Generate app icons from SVG
+        shell: bash
+        run: |
+          # Install tools for icon conversion
+          if [ "${{ runner.os }}" = "Linux" ]; then
+            sudo apt-get update
+            sudo apt-get install -y librsvg2-bin imagemagick
+          elif [ "${{ runner.os }}" = "macOS" ]; then
+            brew install librsvg imagemagick || true
+          elif [ "${{ runner.os }}" = "Windows" ]; then
+            choco install imagemagick -y || true
+          fi
+          
+          SVG="build/icon.svg"
+          if [ -f "$SVG" ]; then
+            # Generate PNG sizes for different platforms
+            mkdir -p build/icons
+            
+            # Linux: 512x512 PNG
+            if command -v rsvg-convert &>/dev/null; then
+              rsvg-convert -w 512 -h 512 "$SVG" -o build/icons/icon-512.png
+              rsvg-convert -w 256 -h 256 "$SVG" -o build/icons/icon-256.png
+              rsvg-convert -w 128 -h 128 "$SVG" -o build/icons/icon-128.png
+              rsvg-convert -w 64 -h 64 "$SVG" -o build/icons/icon-64.png
+              rsvg-convert -w 48 -h 48 "$SVG" -o build/icons/icon-48.png
+              rsvg-convert -w 32 -h 32 "$SVG" -o build/icons/icon-32.png
+              rsvg-convert -w 16 -h 16 "$SVG" -o build/icons/icon-16.png
+            elif command -v convert &>/dev/null; then
+              convert -background none "$SVG" -resize 512x512 build/icons/icon-512.png
+              convert -background none "$SVG" -resize 256x256 build/icons/icon-256.png
+              convert -background none "$SVG" -resize 128x128 build/icons/icon-128.png
+              convert -background none "$SVG" -resize 64x64 build/icons/icon-64.png
+              convert -background none "$SVG" -resize 48x48 build/icons/icon-48.png
+              convert -background none "$SVG" -resize 32x32 build/icons/icon-32.png
+              convert -background none "$SVG" -resize 16x16 build/icons/icon-16.png
+            fi
+            
+            # macOS .icns (on macOS runner)
+            if [ "${{ runner.os }}" = "macOS" ] && [ -d "build/icons" ]; then
+              mkdir -p build/icons/icon.iconset
+              cp build/icons/icon-512.png build/icons/icon.iconset/icon_512x512.png
+              cp build/icons/icon-256.png build/icons/icon.iconset/icon_256x256.png
+              cp build/icons/icon-128.png build/icons/icon.iconset/icon_128x128.png
+              cp build/icons/icon-64.png build/icons/icon.iconset/icon_32x32@2x.png
+              cp build/icons/icon-32.png build/icons/icon.iconset/icon_32x32.png
+              cp build/icons/icon-16.png build/icons/icon.iconset/icon_16x16.png
+              iconutil -c icns build/icons/icon.iconset -o build/icons/icon.icns
+              rm -rf build/icons/icon.iconset
+            fi
+            
+            # Windows .ico (on Windows runner with ImageMagick)
+            if [ "${{ runner.os }}" = "Windows" ] && command -v convert &>/dev/null && [ -d "build/icons" ]; then
+              convert build/icons/icon-256.png build/icons/icon-128.png build/icons/icon-64.png build/icons/icon-48.png build/icons/icon-32.png build/icons/icon-16.png build/icons/icon.ico
+            fi
+            
+            # Copy main icon for Wails
+            if [ -f "build/icons/icon-512.png" ]; then
+              cp build/icons/icon-512.png build/appicon.png
+            fi
+            
+            echo "Generated icons:"
+            ls -la build/icons/ || true
+            ls -la build/appicon.png || true
+          fi
+
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
