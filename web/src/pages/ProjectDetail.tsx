@@ -2,6 +2,8 @@ import { useState, useEffect, useMemo } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { getProjectDetail, updateProjectLevel, ProjectDetail } from '../api/client'
 import TrendChart, { TrendDataset } from '../components/TrendChart'
+import Heatmap from '../components/Heatmap'
+import StatusBar from '../components/StatusBar'
 import ProjectPanel from '../components/ProjectPanel'
 
 function getLastDays(n: number): string[] {
@@ -24,7 +26,7 @@ function ProjectDetailPage() {
   const [project, setProject] = useState<ProjectDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [range, setRange] = useState<'week' | 'all'>('week')
+  const [range, setRange] = useState<'week' | 'month' | 'all'>('week')
 
   useEffect(() => {
     if (!id) return
@@ -48,149 +50,223 @@ function ProjectDetailPage() {
     }
   }
 
-  const trendData = useMemo(() => {
-    const map = new Map<string, { added: number; deleted: number; files: number }>()
+  const stats = useMemo(() => {
+    const map = new Map<string, { added: number; deleted: number; files: number; commits: number }>()
     if (project?.repos) {
       project.repos.forEach((repo) => {
         repo.stats?.forEach((stat) => {
-          const cur = map.get(stat.stat_date) || { added: 0, deleted: 0, files: 0 }
+          const cur = map.get(stat.stat_date) || { added: 0, deleted: 0, files: 0, commits: 0 }
           cur.added += stat.lines_added
           cur.deleted += stat.lines_deleted
           cur.files += stat.files_changed
+          cur.commits++
           map.set(stat.stat_date, cur)
         })
       })
     }
+    return map
+  }, [project])
 
-    let dates = Array.from(map.keys()).sort()
+  const trendData = useMemo(() => {
+    let dates = Array.from(stats.keys()).sort()
     if (range === 'week') {
       const weekDates = getLastDays(7)
       dates = dates.filter((d) => weekDates.includes(d))
+    } else if (range === 'month') {
+      const monthDates = getLastDays(30)
+      dates = dates.filter((d) => monthDates.includes(d))
     }
 
     return {
       labels: dates,
       datasets: [
-        { label: '新增行数', data: dates.map((d) => map.get(d)!.added), color: '#4caf50' },
-        { label: '删除行数', data: dates.map((d) => map.get(d)!.deleted), color: '#f44336' },
-        { label: '文件变更', data: dates.map((d) => map.get(d)!.files), color: '#2196f3' },
+        { label: '新增行数', data: dates.map((d) => stats.get(d)!.added), color: '#4a7d4a' },
+        { label: '删除行数', data: dates.map((d) => stats.get(d)!.deleted), color: '#c95757' },
+        { label: '文件变更', data: dates.map((d) => stats.get(d)!.files), color: '#5a7fa0' },
       ] as TrendDataset[],
     }
-  }, [project, range])
+  }, [stats, range])
+
+  const totals = useMemo(() => {
+    let added = 0, deleted = 0, files = 0, active = 0
+    stats.forEach((v) => {
+      added += v.added
+      deleted += v.deleted
+      files += v.files
+      if (v.added + v.deleted > 0) active++
+    })
+    return { added, deleted, files, active, repos: project?.repos?.length || 0 }
+  }, [stats, project])
 
   if (loading) {
     return (
       <div className="project-detail">
-        <div className="skeleton skeleton-text" style={{width: 120, marginBottom: 16}} />
-        <div className="project-layout">
-          <div className="project-main">
-            <div className="skeleton skeleton-text" style={{width: '40%', height: 28, marginBottom: 8}} />
-            <div className="skeleton skeleton-text" style={{width: '60%', height: 16, marginBottom: 24}} />
-            <div className="skeleton skeleton-text" style={{width: '100%', height: 280, marginBottom: 24}} />
-            <div className="skeleton skeleton-text" style={{width: 80, height: 20, marginBottom: 12}} />
-            {Array.from({ length: 3 }).map((_, i) => (
-              <div key={i} className="skeleton skeleton-text" style={{width: '100%', height: 48, marginBottom: 8}} />
-            ))}
-          </div>
-          <div className="side-panel">
-            <div className="skeleton skeleton-text" style={{width: '60%', height: 20, marginBottom: 12}} />
-            <div className="skeleton skeleton-text" style={{width: '100%', height: 36, marginBottom: 8}} />
-            <div className="skeleton skeleton-text" style={{width: '100%', height: 36}} />
-          </div>
+        <div className="project-fixed">
+          <div className="skeleton skeleton-text" style={{width: 200, height: 28, marginBottom: 8}} />
+          <div className="skeleton skeleton-text" style={{width: '50%', height: 14, marginBottom: 20}} />
+          <div className="skeleton skeleton-text" style={{width: '100%', height: 80, marginBottom: 16}} />
         </div>
+        <div className="project-scroll">
+          <div className="skeleton skeleton-text" style={{width: '100%', height: 280, marginBottom: 16}} />
+        </div>
+        <StatusBar />
       </div>
     )
   }
 
-  if (error) {
+  if (error || !project) {
     return (
       <div className="project-detail">
-        <button className="btn btn-secondary" onClick={() => navigate('/')}>&larr; 返回仪表盘</button>
+        <button className="btn btn-secondary back-btn" onClick={() => navigate('/')}>&larr; 返回仪表盘</button>
         <div className="error-banner">
-          <span>{error}</span>
+          <span>{error || '项目未找到'}</span>
           <button className="btn btn-sm" onClick={() => id && getProjectDetail(Number(id)).then(setProject).catch(() => {})}>重试</button>
         </div>
+        <StatusBar />
       </div>
     )
   }
-
-  if (!project) return <div className="error-banner">项目未找到</div>
 
   return (
     <div className="project-detail">
-      <button className="btn btn-secondary" onClick={() => navigate('/')}>
-        &larr; 返回仪表盘
-      </button>
+      <div className="project-fixed">
+        <button className="btn btn-secondary back-btn" onClick={() => navigate('/')}>
+          &larr; 返回仪表盘
+        </button>
 
-      <div className="project-layout">
-        <div className="project-main">
-          <div className="detail-header">
-            <h1>{project.name}</h1>
-            <p className="detail-path">{project.root_path}</p>
-            <div className="detail-meta">
-              <span className="meta-tag">子仓库 {project.repos?.length || 0} 个</span>
-              <span className="meta-tag">{project.is_auto_grouped ? '自动分组' : '手动分组'}</span>
-              {dateParam && <span className="meta-tag">日期: {dateParam}</span>}
+        <div className="detail-header-card">
+          <div className="detail-title-row">
+            <div>
+              <h1>{project.name}</h1>
+              <p className="detail-path">{project.root_path}</p>
             </div>
-            <div className="level-controls">
-              <span>调整分组层级：</span>
-              <button className="btn btn-sm" onClick={() => handleLevelChange('up')}>
-                向上合并
-              </button>
+            <div className="detail-actions">
               <button className="btn btn-sm" onClick={() => handleLevelChange('down')}>
                 向下拆分
               </button>
+              <button className="btn btn-sm" onClick={() => handleLevelChange('up')}>
+                向上合并
+              </button>
             </div>
           </div>
 
-          <div className="detail-section">
-            <div className="section-header">
-              <h2>趋势图</h2>
-              <div className="range-toggle">
-                <button
-                  className={`btn btn-sm ${range === 'week' ? 'btn-active' : ''}`}
-                  onClick={() => setRange('week')}
-                >
-                  近7天
-                </button>
-                <button
-                  className={`btn btn-sm ${range === 'all' ? 'btn-active' : ''}`}
-                  onClick={() => setRange('all')}
-                >
-                  全部
-                </button>
-              </div>
+          <div className="detail-stats-grid">
+            <div className="detail-stat">
+              <span className="stat-label">子仓库</span>
+              <span className="stat-value">{totals.repos}</span>
             </div>
-            <TrendChart labels={trendData.labels} datasets={trendData.datasets} />
+            <div className="detail-stat">
+              <span className="stat-label">活跃天数</span>
+              <span className="stat-value">{totals.active}</span>
+            </div>
+            <div className="detail-stat">
+              <span className="stat-label">文件变更</span>
+              <span className="stat-value">{totals.files}</span>
+            </div>
+            <div className="detail-stat">
+              <span className="stat-label">新增</span>
+              <span className="stat-value green">+{totals.added}</span>
+            </div>
+            <div className="detail-stat">
+              <span className="stat-label">删除</span>
+              <span className="stat-value red">-{totals.deleted}</span>
+            </div>
           </div>
 
-          <div className="detail-section">
-            <h2>子仓库 ({project.repos?.length || 0})</h2>
-            <div className="repo-list">
-              {(project.repos || []).map((repo) => (
-                <div key={repo.id} className="repo-item">
-                  <div className="repo-path">{repo.path}</div>
-                  <div className="repo-stats">
-                    {(repo.stats && repo.stats.length > 0) ? (
-                      repo.stats.map((stat) => (
-                        <span key={stat.id} className="stat-tag">
-                          {stat.stat_date}: <span className="green">+{stat.lines_added}</span>{' '}
-                          <span className="red">-{stat.lines_deleted}</span>{' '}
-                          ({stat.author})
-                        </span>
-                      ))
-                    ) : (
-                      <span className="stat-tag">暂无统计</span>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
+          <div className="detail-meta-row">
+            <span className="meta-pill">{project.is_auto_grouped ? '自动分组' : '手动分组'}</span>
+            {dateParam && <span className="meta-pill">日期: {dateParam}</span>}
           </div>
         </div>
-
-        <ProjectPanel projectId={Number(id)} />
       </div>
+
+      <div className="project-scroll">
+        <div className="detail-section">
+          <div className="section-header">
+            <h2>提交热力图</h2>
+          </div>
+          <Heatmap />
+        </div>
+
+        <div className="detail-section">
+          <div className="section-header">
+            <h2>趋势图</h2>
+            <div className="range-toggle">
+              <button
+                className={`btn btn-sm ${range === 'week' ? 'btn-active' : ''}`}
+                onClick={() => setRange('week')}
+              >
+                近7天
+              </button>
+              <button
+                className={`btn btn-sm ${range === 'month' ? 'btn-active' : ''}`}
+                onClick={() => setRange('month')}
+              >
+                近30天
+              </button>
+              <button
+                className={`btn btn-sm ${range === 'all' ? 'btn-active' : ''}`}
+                onClick={() => setRange('all')}
+              >
+                全部
+              </button>
+            </div>
+          </div>
+          {trendData.labels.length > 0 ? (
+            <TrendChart labels={trendData.labels} datasets={trendData.datasets} />
+          ) : (
+            <div className="empty-section">该时间范围内暂无数据</div>
+          )}
+        </div>
+
+        <div className="project-layout">
+          <div className="project-main">
+            <div className="detail-section">
+              <h2>子仓库 ({project.repos?.length || 0})</h2>
+              <div className="repo-list">
+                {(project.repos || []).map((repo) => {
+                  const repoTotals = (repo.stats || []).reduce(
+                    (acc, s) => ({
+                      added: acc.added + s.lines_added,
+                      deleted: acc.deleted + s.lines_deleted,
+                      files: acc.files + s.files_changed,
+                    }),
+                    { added: 0, deleted: 0, files: 0 }
+                  )
+                  return (
+                    <div key={repo.id} className="repo-item">
+                      <div className="repo-header">
+                        <div className="repo-path">{repo.path.split('/').slice(-2).join('/')}</div>
+                        <div className="repo-totals">
+                          <span className="green">+{repoTotals.added}</span>
+                          <span className="red">-{repoTotals.deleted}</span>
+                        </div>
+                      </div>
+                      {repo.stats && repo.stats.length > 0 && (
+                        <div className="repo-stats">
+                          {repo.stats.slice(0, 5).map((stat) => (
+                            <span key={stat.id} className="stat-tag">
+                              {stat.stat_date}: <span className="green">+{stat.lines_added}</span>{' '}
+                              <span className="red">-{stat.lines_deleted}</span>
+                            </span>
+                          ))}
+                          {repo.stats.length > 5 && (
+                            <span className="stat-tag more">+{repo.stats.length - 5} 更多</span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          </div>
+
+          <ProjectPanel projectId={Number(id)} />
+        </div>
+      </div>
+
+      <StatusBar />
     </div>
   )
 }
