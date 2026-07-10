@@ -55,12 +55,25 @@ jobs:
             choco install imagemagick -y || true
           fi
           
+          # Determine conversion command
+          if command -v magick &>/dev/null; then
+            IM_CONV="magick"
+          elif command -v convert &>/dev/null; then
+            # Verify it's ImageMagick, not Windows system convert
+            if convert --version 2>/dev/null | grep -qi ImageMagick; then
+              IM_CONV="convert"
+            else
+              IM_CONV=""
+            fi
+          else
+            IM_CONV=""
+          fi
+          
           SVG="build/icon.svg"
           if [ -f "$SVG" ]; then
             # Generate PNG sizes for different platforms
             mkdir -p build/icons
             
-            # Linux: 512x512 PNG
             if command -v rsvg-convert &>/dev/null; then
               rsvg-convert -w 512 -h 512 "$SVG" -o build/icons/icon-512.png
               rsvg-convert -w 256 -h 256 "$SVG" -o build/icons/icon-256.png
@@ -69,14 +82,14 @@ jobs:
               rsvg-convert -w 48 -h 48 "$SVG" -o build/icons/icon-48.png
               rsvg-convert -w 32 -h 32 "$SVG" -o build/icons/icon-32.png
               rsvg-convert -w 16 -h 16 "$SVG" -o build/icons/icon-16.png
-            elif command -v convert &>/dev/null; then
-              convert -background none "$SVG" -resize 512x512 build/icons/icon-512.png
-              convert -background none "$SVG" -resize 256x256 build/icons/icon-256.png
-              convert -background none "$SVG" -resize 128x128 build/icons/icon-128.png
-              convert -background none "$SVG" -resize 64x64 build/icons/icon-64.png
-              convert -background none "$SVG" -resize 48x48 build/icons/icon-48.png
-              convert -background none "$SVG" -resize 32x32 build/icons/icon-32.png
-              convert -background none "$SVG" -resize 16x16 build/icons/icon-16.png
+            elif [ -n "$IM_CONV" ]; then
+              $IM_CONV "$SVG" -background none -resize 512x512 build/icons/icon-512.png
+              $IM_CONV "$SVG" -background none -resize 256x256 build/icons/icon-256.png
+              $IM_CONV "$SVG" -background none -resize 128x128 build/icons/icon-128.png
+              $IM_CONV "$SVG" -background none -resize 64x64 build/icons/icon-64.png
+              $IM_CONV "$SVG" -background none -resize 48x48 build/icons/icon-48.png
+              $IM_CONV "$SVG" -background none -resize 32x32 build/icons/icon-32.png
+              $IM_CONV "$SVG" -background none -resize 16x16 build/icons/icon-16.png
             fi
             
             # macOS .icns (on macOS runner)
@@ -93,8 +106,8 @@ jobs:
             fi
             
             # Windows .ico (on Windows runner with ImageMagick)
-            if [ "${{ runner.os }}" = "Windows" ] && command -v convert &>/dev/null && [ -d "build/icons" ]; then
-              convert build/icons/icon-256.png build/icons/icon-128.png build/icons/icon-64.png build/icons/icon-48.png build/icons/icon-32.png build/icons/icon-16.png build/icons/icon.ico
+            if [ "${{ runner.os }}" = "Windows" ] && [ -n "$IM_CONV" ] && [ -d "build/icons" ]; then
+              $IM_CONV build/icons/icon-256.png build/icons/icon-128.png build/icons/icon-64.png build/icons/icon-48.png build/icons/icon-32.png build/icons/icon-16.png build/icons/icon.ico
             fi
             
             # Copy main icon for Wails
