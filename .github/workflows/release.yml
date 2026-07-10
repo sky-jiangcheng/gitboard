@@ -100,6 +100,20 @@ jobs:
           APP=$(ls -d build/bin/*.app 2>/dev/null | head -1)
           if [ -n "$APP" ]; then
             APP_NAME=$(basename "$APP")
+            APP_PATH="$APP"
+            
+            if [ -n "$APPLE_CERTIFICATE" ]; then
+              echo "Signing $APP_NAME..."
+              echo "$APPLE_CERTIFICATE" | base64 -d -o /tmp/cert.p12
+              security create-keychain -p "github-actions" /tmp/signing.keychain
+              security import /tmp/cert.p12 -k /tmp/signing.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+              security list-keychains -s /tmp/signing.keychain
+              security default-keychain -s /tmp/signing.keychain
+              security unlock-keychain -p "github-actions" /tmp/signing.keychain
+              codesign --deep --force --sign "$APPLE_TEAM_ID" --options runtime "$APP_PATH"
+              echo "Signed successfully"
+            fi
+            
             STAGING=$(mktemp -d)
             cp -R "$APP" "$STAGING/"
             ln -s /Applications "$STAGING/Applications"
@@ -118,6 +132,12 @@ jobs:
               "release/gitboard-${{ matrix.target }}.dmg" \
               "$STAGING/"
             rm -rf "$STAGING"
+            
+            if [ -n "$APPLE_CERTIFICATE" ] && [ -n "$APPLE_ID" ]; then
+              echo "Notarizing DMG..."
+              xcrun notarytool submit "release/gitboard-${{ matrix.target }}.dmg" --keychain-profile "github-actions" --wait 2>&1 || true
+              xcrun stapler staple "release/gitboard-${{ matrix.target }}.dmg" 2>&1 || true
+            fi
           fi
           echo "RELEASE_DIR=release" >> $GITHUB_ENV
 
