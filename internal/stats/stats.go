@@ -270,6 +270,83 @@ func isHex(s string) bool {
 	return true
 }
 
+// RecentCommit holds information about the most recent commit.
+type RecentCommit struct {
+	Time    string `json:"time"`
+	Message string `json:"message"`
+	Author  string `json:"author"`
+	Repo    string `json:"repo"`
+	Branch  string `json:"branch"`
+}
+
+// GetRecentCommit queries the most recent commit across all repositories.
+func GetRecentCommit(repoPaths []string, filterAuthor string) (*RecentCommit, error) {
+	var best *RecentCommit
+
+	for _, repoPath := range repoPaths {
+		args := []string{
+			"log", "-1",
+			"--pretty=format:%H%n%an%n%at%n%s%n%D",
+		}
+		if filterAuthor != "" {
+			args = append(args, "--author="+filterAuthor)
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), QueryTimeout)
+		cmd := exec.CommandContext(ctx, "git", args...)
+		cmd.Dir = repoPath
+		out, err := cmd.Output()
+		cancel()
+		if err != nil {
+			continue
+		}
+
+		lines := strings.Split(string(out), "\n")
+		if len(lines) < 4 {
+			continue
+		}
+
+		ts, _ := strconv.ParseInt(lines[2], 10, 64)
+		if ts == 0 {
+			continue
+		}
+
+		branch := ""
+		if len(lines) >= 5 {
+			branch = extractBranch(lines[4])
+		}
+
+		commitTime := time.Unix(ts, 0)
+		if best == nil || commitTime.After(time.Unix(parseTimestamp(best.Time), 0)) {
+			best = &RecentCommit{
+				Time:    commitTime.Format("2006-01-02 15:04:05"),
+				Author:  lines[1],
+				Message: lines[3],
+				Repo:    repoPath,
+				Branch:  branch,
+			}
+		}
+	}
+
+	return best, nil
+}
+
+func extractBranch(refString string) string {
+	if strings.Contains(refString, "HEAD -> ") {
+		parts := strings.Split(refString, "HEAD -> ")
+		if len(parts) > 1 {
+			b := strings.Split(parts[1], ",")[0]
+			return strings.TrimSpace(b)
+		}
+	}
+	return ""
+}
+
+func parseTimestamp(s string) int64 {
+	t, _ := time.Parse("2006-01-02 15:04:05", s)
+	return t.Unix()
+}
+
 func GetTodayDate() string {
 	return time.Now().Format("2006-01-02")
 }

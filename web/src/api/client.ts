@@ -91,6 +91,25 @@ export interface TodoCount {
   total: number
 }
 
+export interface HeatmapDay {
+  date: string
+  lines_added: number
+  lines_deleted: number
+  commits: number
+}
+
+export interface HeatmapResponse {
+  days: HeatmapDay[]
+}
+
+export interface StatusBarData {
+  current_time: string
+  last_commit_time: string
+  last_commit_repo: string
+  last_commit_branch: string
+  last_commit_msg: string
+}
+
 // --- Wails mode helper ---
 
 const isWails = (): boolean =>
@@ -254,4 +273,20 @@ export function deleteNote(noteId: number): Promise<void> {
 export function getTodoCounts(): Promise<TodoCount[]> {
   if (isWails()) return wail<TodoCount[]>('GetTodoCounts').then(d => d ?? [])
   return http<TodoCount[]>('/todo-counts').then(d => d ?? [])
+}
+
+export function getHeatmapData(): Promise<HeatmapResponse> {
+  if (isWails()) return wail<HeatmapResponse>('GetHeatmapData').then(d => d ?? { days: [] })
+  return http<HeatmapResponse>('/heatmap').then(d => d ?? { days: [] })
+}
+
+export function getStatusBar(): Promise<StatusBarData> {
+  if (isWails()) return wail<StatusBarData>('GetStatusBar').then(d => d ?? {
+    current_time: '', last_commit_time: '', last_commit_repo: '',
+    last_commit_branch: '', last_commit_msg: '',
+  })
+  return http<StatusBarData>('/status-bar').then(d => d ?? {
+    current_time: '', last_commit_time: '', last_commit_repo: '',
+    last_commit_branch: '', last_commit_msg: '',
+  })
 }

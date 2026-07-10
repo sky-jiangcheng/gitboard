@@ -5,8 +5,10 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"gitboard/internal/db"
 	"gitboard/internal/grouper"
@@ -409,6 +411,59 @@ func (a *App) UpdateNote(noteID int64, content string) error {
 // DeleteNote removes a note.
 func (a *App) DeleteNote(noteID int64) error {
 	return db.DeleteNote(a.db, noteID)
+}
+
+// HeatmapResponse holds heatmap data for the frontend.
+type HeatmapResponse struct {
+	Days []db.HeatmapDay `json:"days"`
+}
+
+// GetHeatmapData returns daily commit stats for the past year.
+func (a *App) GetHeatmapData() *HeatmapResponse {
+	endDate := stats.GetTodayDate()
+	startDate := time.Now().AddDate(0, 0, -365).Format("2006-01-02")
+
+	days, err := db.GetHeatmapData(a.db, startDate, endDate, a.gitUser)
+	if err != nil {
+		log.Printf("get heatmap error: %v", err)
+		return &HeatmapResponse{Days: []db.HeatmapDay{}}
+	}
+	if days == nil {
+		days = []db.HeatmapDay{}
+	}
+	return &HeatmapResponse{Days: days}
+}
+
+// StatusBarData holds real-time status information.
+type StatusBarData struct {
+	CurrentTime      string `json:"current_time"`
+	LastCommitTime   string `json:"last_commit_time"`
+	LastCommitRepo   string `json:"last_commit_repo"`
+	LastCommitBranch string `json:"last_commit_branch"`
+	LastCommitMsg    string `json:"last_commit_msg"`
+}
+
+// GetStatusBar returns current status bar information.
+func (a *App) GetStatusBar() *StatusBarData {
+	repos, _ := db.GetAllRepositories(a.db)
+	repoPaths := make([]string, 0, len(repos))
+	for _, r := range repos {
+		repoPaths = append(repoPaths, r.Path)
+	}
+
+	data := &StatusBarData{
+		CurrentTime: time.Now().Format("2006-01-02 15:04:05"),
+	}
+
+	recent, err := stats.GetRecentCommit(repoPaths, a.gitUser)
+	if err == nil && recent != nil {
+		data.LastCommitTime = recent.Time
+		data.LastCommitRepo = filepath.Base(recent.Repo)
+		data.LastCommitBranch = recent.Branch
+		data.LastCommitMsg = recent.Message
+	}
+
+	return data
 }
 
 // -- Summary Bind method --

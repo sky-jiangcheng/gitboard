@@ -1,6 +1,8 @@
 import { useState, useEffect, useMemo } from 'react'
 import { getProjects, getSummary, triggerScan, getTodoCounts, Project, Summary, TodoCount } from '../api/client'
 import SummaryBar from '../components/SummaryBar'
+import Heatmap from '../components/Heatmap'
+import StatusBar from '../components/StatusBar'
 import DatePicker from '../components/DatePicker'
 import ProjectCard from '../components/ProjectCard'
 
@@ -101,6 +103,7 @@ function Dashboard() {
   return (
     <div className="dashboard">
       <SummaryBar summary={summary} globalTodoCount={globalTodoCount} />
+      <Heatmap />
 
       <div className="dashboard-controls">
         <DatePicker value={date} onChange={setDate} />
@@ -181,6 +184,7 @@ function Dashboard() {
           ))}
         </div>
       )}
+      <StatusBar />
     </div>
   )
 }

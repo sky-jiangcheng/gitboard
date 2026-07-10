@@ -549,6 +549,44 @@ func scanNotes(rows *sql.Rows) ([]Note, error) {
 	return notes, rows.Err()
 }
 
+// -- Heatmap --
+
+// HeatmapDay represents a single day's contribution data.
+type HeatmapDay struct {
+	Date        string `json:"date"`
+	LinesAdded  int    `json:"lines_added"`
+	LinesDeleted int   `json:"lines_deleted"`
+	Commits     int    `json:"commits"`
+}
+
+// GetHeatmapData returns daily aggregated stats for the given date range and author.
+func GetHeatmapData(dbConn *sql.DB, startDate, endDate, author string) ([]HeatmapDay, error) {
+	query := `
+		SELECT stat_date, SUM(lines_added), SUM(lines_deleted), COUNT(*)
+		FROM daily_stats
+		WHERE stat_date >= ? AND stat_date <= ? AND author = ?
+		GROUP BY stat_date
+		ORDER BY stat_date
+	`
+	rows, err := dbConn.Query(query, startDate, endDate, author)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var days []HeatmapDay
+	for rows.Next() {
+		var d HeatmapDay
+		var commits int
+		if err := rows.Scan(&d.Date, &d.LinesAdded, &d.LinesDeleted, &commits); err != nil {
+			return nil, err
+		}
+		d.Commits = commits
+		days = append(days, d)
+	}
+	return days, rows.Err()
+}
+
 // -- TodoCounts --
 
 // TodoCount holds the todo summary for a project.

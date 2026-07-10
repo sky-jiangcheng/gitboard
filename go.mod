@@ -1,6 +1,6 @@
 module gitboard
 
-go 1.25
+go 1.25.0
 
 require (
 	github.com/wailsapp/wails/v2 v2.13.0
