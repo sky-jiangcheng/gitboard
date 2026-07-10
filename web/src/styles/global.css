@@ -212,23 +212,23 @@ body {
 .summary-bar {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px 28px;
-  padding: 24px 28px;
+  gap: 6px 20px;
+  padding: 16px 20px;
   background: var(--bg-secondary);
   border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-md);
   box-shadow: var(--shadow-sm);
-  margin-bottom: 24px;
+  margin-bottom: 16px;
 }
 
 .summary-item {
   display: flex;
   flex-direction: column;
-  min-width: 72px;
+  min-width: 60px;
 }
 
 .summary-label {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--text-tertiary);
   text-transform: none;
   letter-spacing: 0;
@@ -236,9 +236,9 @@ body {
 }
 
 .summary-value {
-  font-size: 26px;
+  font-size: 22px;
   font-weight: 600;
-  margin-top: 2px;
+  margin-top: 1px;
   letter-spacing: -0.02em;
   color: var(--text-primary);
 }
@@ -393,17 +393,18 @@ body {
 /* --- Project grid --- */
 .project-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
 }
 
 .project-card {
-  display: block;
+  display: flex;
+  flex-direction: column;
   background: var(--bg-secondary);
   border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-md);
   box-shadow: var(--shadow-sm);
-  padding: 20px 24px;
+  padding: 14px 16px;
   text-decoration: none;
   color: inherit;
   transition: all var(--transition-base);
@@ -419,13 +420,11 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 14px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid var(--border-subtle);
+  margin-bottom: 10px;
 }
 
 .card-header h3 {
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -433,12 +432,21 @@ body {
   letter-spacing: -0.01em;
 }
 
+.card-badges {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
 .badge {
-  display: inline-block;
-  padding: 3px 9px;
-  border-radius: 20px;
-  font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 10px;
   font-weight: 500;
+  line-height: 1.4;
 }
 
 .badge-warning {
@@ -451,36 +459,95 @@ body {
   color: var(--info);
 }
 
-.card-body {
+.badge-todo {
+  background: var(--warning-soft);
+  color: var(--warning);
+  border-radius: 12px;
+  padding: 2px 8px;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px 12px;
+  margin-bottom: 10px;
+}
+
+.card-stat {
   display: flex;
   flex-direction: column;
-  gap: 7px;
+  align-items: flex-start;
+}
+
+.card-stat .stat-label {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  font-weight: 500;
+}
+
+.card-stat .stat-value {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+  margin-top: 1px;
+}
+
+.card-progress {
+  margin-bottom: 8px;
+}
+
+.progress-bar {
+  display: flex;
+  height: 4px;
+  background: var(--bg-tertiary);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-bottom: 6px;
+}
+
+.progress-fill {
+  flex-shrink: 0;
+  background: var(--accent);
+  border-radius: 2px 0 0 2px;
+  transition: width var(--transition-base);
+}
+
+.progress-fill.deleted {
+  background: var(--danger);
+  border-radius: 0 2px 2px 0;
+}
+
+.progress-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.progress-label {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  font-weight: 500;
+}
+
+.progress-value {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
 }
 
 .card-footer {
-  margin-top: 12px;
-  padding-top: 10px;
+  margin-top: auto;
+  padding-top: 8px;
   border-top: 1px solid var(--border-subtle);
-}
-
-.stat-row {
-  display: flex;
-  justify-content: space-between;
-  font-size: 13px;
-}
-
-.stat-label {
-  color: var(--text-tertiary);
-}
-
-.stat-value {
-  font-weight: 600;
-  color: var(--text-primary);
 }
 
 .stat-tag.team {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 10px;
+  color: var(--text-secondary);
 }
 
 /* --- Project detail --- */
@@ -1079,10 +1146,10 @@ body {
 .heatmap-container {
   background: var(--bg-secondary);
   border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-md);
   box-shadow: var(--shadow-sm);
-  padding: 24px 28px;
-  margin-bottom: 24px;
+  padding: 16px 20px;
+  margin-bottom: 16px;
   overflow-x: auto;
 }
 
