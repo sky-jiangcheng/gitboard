@@ -1,44 +1,17 @@
 import { useEffect, useState } from 'react'
 import { getHeatmapData, type HeatmapDay } from '../api/client'
 
-function getLevel(day: HeatmapDay): number {
+const WEEKS = 52
+const DAYS_PER_WEEK = 7
+
+function getLevel(day: HeatmapDay | null): number {
+  if (!day) return 0
   const total = day.lines_added + day.lines_deleted
   if (total === 0) return 0
   if (total < 100) return 1
   if (total < 300) return 2
   if (total < 600) return 3
   return 4
-}
-
-function getWeeks(days: HeatmapDay[]): (HeatmapDay | null)[][] {
-  const result: (HeatmapDay | null)[][] = []
-  let week: (HeatmapDay | null)[] = []
-
-  // Pad to start on Sunday
-  if (days.length > 0) {
-    const first = new Date(days[0].date)
-    const pad = first.getDay()
-    for (let i = 0; i < pad; i++) {
-      week.push(null)
-    }
-  }
-
-  for (const day of days) {
-    week.push(day)
-    if (week.length === 7) {
-      result.push(week)
-      week = []
-    }
-  }
-
-  if (week.length > 0) {
-    while (week.length < 7) {
-      week.push(null)
-    }
-    result.push(week)
-  }
-
-  return result
 }
 
 function formatDate(dateStr: string): string {
@@ -57,6 +30,40 @@ function getTotalStats(days: HeatmapDay[]) {
   return { added, deleted, commits, active }
 }
 
+// Generate fixed 52 weeks grid ending today
+function generateGrid(days: HeatmapDay[]): (HeatmapDay | null)[][] {
+  const dayMap = new Map<string, HeatmapDay>()
+  for (const d of days) {
+    dayMap.set(d.date, d)
+  }
+
+  const grid: (HeatmapDay | null)[][] = []
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+
+  // Calculate the Sunday of the week containing 52 weeks ago
+  const endDate = new Date(today)
+  const startDate = new Date(today)
+  startDate.setDate(startDate.getDate() - (WEEKS * 7 - 1))
+
+  // Adjust start date to Sunday
+  const startDay = startDate.getDay()
+  startDate.setDate(startDate.getDate() - startDay)
+
+  for (let w = 0; w < WEEKS; w++) {
+    const week: (HeatmapDay | null)[] = []
+    for (let d = 0; d < DAYS_PER_WEEK; d++) {
+      const date = new Date(startDate)
+      date.setDate(date.getDate() + w * 7 + d)
+      const dateStr = date.toISOString().split('T')[0]
+      week.push(dayMap.get(dateStr) || null)
+    }
+    grid.push(week)
+  }
+
+  return grid
+}
+
 export default function Heatmap() {
   const [days, setDays] = useState<HeatmapDay[]>([])
   const [loading, setLoading] = useState(true)
@@ -68,7 +75,7 @@ export default function Heatmap() {
       .finally(() => setLoading(false))
   }, [])
 
-  const weeks = getWeeks(days)
+  const grid = generateGrid(days)
   const stats = getTotalStats(days)
 
   if (loading) {
@@ -79,23 +86,22 @@ export default function Heatmap() {
     )
   }
 
-  if (days.length === 0) {
-    return (
-      <div className="heatmap-container">
-        <div className="heatmap-empty">暂无提交数据</div>
-      </div>
-    )
-  }
-
+  // Generate month labels at correct positions
   const monthLabels: { index: number; label: string }[] = []
   let lastMonth = -1
-  weeks.forEach((week, weekIndex) => {
-    const day = week.find(d => d !== null)
-    if (day) {
-      const month = new Date(day.date).getMonth()
-      if (month !== lastMonth) {
-        monthLabels.push({ index: weekIndex, label: new Date(day.date).toLocaleDateString('zh-CN', { month: 'short' }) })
-        lastMonth = month
+  grid.forEach((week, weekIndex) => {
+    // Find first non-null day in week to get the month
+    for (const day of week) {
+      if (day) {
+        const month = new Date(day.date).getMonth()
+        if (month !== lastMonth) {
+          monthLabels.push({ 
+            index: weekIndex, 
+            label: new Date(day.date).toLocaleDateString('zh-CN', { month: 'short' }) 
+          })
+          lastMonth = month
+        }
+        break
       }
     }
   })
@@ -106,54 +112,60 @@ export default function Heatmap() {
         <h3 className="heatmap-title">提交热力图</h3>
         <div className="heatmap-stats">
           <div className="heatmap-stat">
-            <span className="heatmap-stat-label">活跃天数</span>
+            <span className="heatmap-stat-label">活跃</span>
             <span className="heatmap-stat-value">{stats.active}</span>
           </div>
           <div className="heatmap-stat">
-            <span className="heatmap-stat-label">总提交</span>
+            <span className="heatmap-stat-label">提交</span>
             <span className="heatmap-stat-value">{stats.commits}</span>
           </div>
           <div className="heatmap-stat">
-            <span className="heatmap-stat-label">新增行</span>
+            <span className="heatmap-stat-label">新增</span>
             <span className="heatmap-stat-value">{stats.added.toLocaleString()}</span>
           </div>
           <div className="heatmap-stat">
-            <span className="heatmap-stat-label">删除行</span>
+            <span className="heatmap-stat-label">删除</span>
             <span className="heatmap-stat-value">{stats.deleted.toLocaleString()}</span>
           </div>
         </div>
       </div>
 
-      <div className="heatmap-months">
-        {monthLabels.map(m => (
-          <span key={m.index} className="heatmap-month-label" style={{ left: `${m.index * 16}px` }}>
-            {m.label}
-          </span>
-        ))}
-      </div>
-
-      <div className="heatmap-grid-wrapper">
-        <div className="heatmap-day-labels">
-          <span>日</span>
-          <span></span>
-          <span>二</span>
-          <span></span>
-          <span>四</span>
-          <span></span>
-          <span>六</span>
-        </div>
-        <div className="heatmap-grid">
-          {weeks.map((week, wi) => (
-            <div key={wi} className="heatmap-week">
-              {week.map((day, di) => (
-                <div
-                  key={di}
-                  className={`heatmap-cell level-${day ? getLevel(day) : 0}`}
-                  title={day ? `${formatDate(day.date)}: +${day.lines_added} -${day.lines_deleted} (${day.commits} 次提交)` : ''}
-                />
-              ))}
-            </div>
+      <div className="heatmap-content">
+        <div className="heatmap-months">
+          {monthLabels.map(m => (
+            <span 
+              key={m.index} 
+              className="heatmap-month-label" 
+              style={{ left: `${m.index * 15 + 28}px` }}
+            >
+              {m.label}
+            </span>
           ))}
+        </div>
+
+        <div className="heatmap-grid-wrapper">
+          <div className="heatmap-day-labels">
+            <span></span>
+            <span>一</span>
+            <span></span>
+            <span>三</span>
+            <span></span>
+            <span>五</span>
+            <span></span>
+          </div>
+          <div className="heatmap-grid">
+            {grid.map((week, wi) => (
+              <div key={wi} className="heatmap-week">
+                {week.map((day, di) => (
+                  <div
+                    key={di}
+                    className={`heatmap-cell level-${getLevel(day)}`}
+                    title={day ? `${formatDate(day.date)}: +${day.lines_added} -${day.lines_deleted} (${day.commits} 次提交)` : ''}
+                  />
+                ))}
+              </div>
+            ))}
+          </div>
         </div>
       </div>
 

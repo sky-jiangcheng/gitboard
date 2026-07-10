@@ -1150,15 +1150,14 @@ body {
   box-shadow: var(--shadow-sm);
   padding: 16px 20px;
   margin-bottom: 16px;
-  overflow-x: auto;
 }
 
 .heatmap-loading,
 .heatmap-empty {
-  padding: 48px;
+  padding: 32px;
   text-align: center;
   color: var(--text-tertiary);
-  font-size: 14px;
+  font-size: 13px;
 }
 
 .heatmap-header {
@@ -1166,12 +1165,12 @@ body {
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: 12px;
-  margin-bottom: 18px;
+  gap: 10px;
+  margin-bottom: 14px;
 }
 
 .heatmap-title {
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 600;
   color: var(--text-primary);
   letter-spacing: -0.01em;
@@ -1179,7 +1178,7 @@ body {
 
 .heatmap-stats {
   display: flex;
-  gap: 24px;
+  gap: 16px;
   flex-wrap: wrap;
 }
 
@@ -1187,11 +1186,11 @@ body {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  min-width: 60px;
+  min-width: 48px;
 }
 
 .heatmap-stat-label {
-  font-size: 11px;
+  font-size: 10px;
   color: var(--text-tertiary);
   text-transform: none;
   letter-spacing: 0;
@@ -1199,23 +1198,27 @@ body {
 }
 
 .heatmap-stat-value {
-  font-size: 20px;
+  font-size: 16px;
   font-weight: 600;
   color: var(--text-primary);
-  letter-spacing: -0.02em;
-  margin-top: 2px;
+  letter-spacing: -0.01em;
+  margin-top: 1px;
+}
+
+.heatmap-content {
+  overflow-x: auto;
 }
 
 .heatmap-months {
   position: relative;
-  height: 18px;
+  height: 16px;
   margin-bottom: 4px;
-  margin-left: 32px;
+  margin-left: 28px;
 }
 
 .heatmap-month-label {
   position: absolute;
-  font-size: 11px;
+  font-size: 10px;
   color: var(--text-tertiary);
   white-space: nowrap;
   font-weight: 500;
@@ -1223,46 +1226,48 @@ body {
 
 .heatmap-grid-wrapper {
   display: flex;
-  gap: 4px;
+  gap: 3px;
 }
 
 .heatmap-day-labels {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 2px;
   padding-top: 2px;
 }
 
 .heatmap-day-labels span {
-  height: 12px;
-  line-height: 12px;
+  height: 11px;
+  line-height: 11px;
   font-size: 10px;
   color: var(--text-tertiary);
   text-align: right;
-  width: 24px;
+  width: 22px;
 }
 
 .heatmap-grid {
   display: flex;
-  gap: 3px;
+  gap: 2px;
+  width: fit-content;
 }
 
 .heatmap-week {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 2px;
 }
 
 .heatmap-cell {
-  width: 12px;
-  height: 12px;
+  width: 11px;
+  height: 11px;
   border-radius: 2px;
   background: var(--bg-tertiary);
-  transition: transform 0.15s ease;
+  transition: transform 0.1s ease;
+  flex-shrink: 0;
 }
 
 .heatmap-cell:hover {
-  transform: scale(1.4);
+  transform: scale(1.3);
   outline: 1px solid rgba(0,0,0,0.15);
   z-index: 1;
   position: relative;
@@ -1288,9 +1293,9 @@ body {
 .heatmap-legend {
   display: flex;
   align-items: center;
-  gap: 5px;
-  margin-top: 14px;
-  font-size: 11px;
+  gap: 4px;
+  margin-top: 12px;
+  font-size: 10px;
   color: var(--text-tertiary);
   font-weight: 500;
 }
