@@ -291,31 +291,76 @@ func (a *App) runFullScan(ctx context.Context) {
 	}
 
 	a.refreshAllStatsWithCancel(ctx)
+	_ = db.SetConfig(a.db, "last_stats_backfill", stats.GetTodayDate())
 	log.Printf("scan complete: %d repos, %d projects", len(repos), len(groups))
 }
 
-// ensureHistoryBackfilled checks if we have a full year of stats history,
-// and backfills if missing. Runs in background at startup.
+// ensureHistoryBackfilled checks if we need to update stats, and backfills missing days.
+// Runs in background at startup. Uses config to track last backfill date to avoid repeating.
 func (a *App) ensureHistoryBackfilled() {
 	repos, err := db.GetAllRepositories(a.db)
 	if err != nil || len(repos) == 0 {
 		return
 	}
 
-	oneYearAgo := time.Now().AddDate(0, 0, -365).Format("2006-01-02")
-	hasAll, _ := db.HasStatsSince(a.db, oneYearAgo, a.gitUser)
-	if hasAll {
-		return
+	lastBackfillStr, _ := db.GetConfig(a.db, "last_stats_backfill")
+	lastBackfill, _ := time.Parse("2006-01-02", lastBackfillStr)
+
+	today := stats.GetTodayDate()
+	startDate := today
+
+	if lastBackfill.IsZero() {
+		startDate = time.Now().AddDate(0, 0, -365).Format("2006-01-02")
+	} else {
+		startDate = lastBackfill.AddDate(0, 0, 1).Format("2006-01-02")
+		if startDate > today {
+			return
+		}
 	}
 
-	log.Printf("backfilling git history...")
+	log.Printf("backfilling stats from %s to %s...", startDate, today)
 	a.scanning = true
 	ctx, cancel := context.WithCancel(context.Background())
 	a.scanCancel = cancel
-	a.refreshAllStatsWithCancel(ctx)
+
+	hasData := false
+	for _, repo := range repos {
+		select {
+		case <-ctx.Done():
+			log.Printf("stats refresh cancelled")
+			return
+		default:
+		}
+
+		allEntries, err := stats.QueryStatsRange(repo.Path, startDate, today, "")
+		if err == nil && allEntries != nil {
+			for _, e := range allEntries {
+				if e.FilesChanged > 0 || e.LinesAdded > 0 || e.LinesDeleted > 0 {
+					_ = db.UpsertDailyStat(a.db, repo.ID, e.Date, "all",
+						e.FilesChanged, e.LinesAdded, e.LinesDeleted)
+					hasData = true
+				}
+			}
+		}
+
+		if a.gitUser != "" {
+			myEntries, err := stats.QueryStatsRange(repo.Path, startDate, today, a.gitUser)
+			if err == nil && myEntries != nil {
+				for _, e := range myEntries {
+					if e.FilesChanged > 0 || e.LinesAdded > 0 || e.LinesDeleted > 0 {
+						_ = db.UpsertDailyStat(a.db, repo.ID, e.Date, a.gitUser,
+							e.FilesChanged, e.LinesAdded, e.LinesDeleted)
+						hasData = true
+					}
+				}
+			}
+		}
+	}
+
+	_ = db.SetConfig(a.db, "last_stats_backfill", today)
 	a.scanning = false
 	a.scanCancel = nil
-	log.Printf("history backfill complete")
+	log.Printf("stats backfill %s, has data: %v", today, hasData)
 }
 
 // ConfigData holds the application configuration sent to the frontend.
