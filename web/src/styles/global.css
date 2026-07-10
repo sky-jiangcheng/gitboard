@@ -306,6 +306,38 @@ body {
   transition: border-color var(--transition-fast);
 }
 
+.filter-toggle {
+  display: flex;
+  align-items: center;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-md);
+  padding: 3px;
+  gap: 2px;
+}
+
+.filter-btn {
+  padding: 5px 14px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  font-family: inherit;
+}
+
+.filter-btn:hover {
+  color: var(--text-primary);
+}
+
+.filter-btn.active {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-sm);
+}
+
 .sort-select:hover {
   border-color: var(--text-muted);
 }
@@ -671,12 +703,40 @@ body {
   text-decoration: none;
   color: inherit;
   transition: all var(--transition-base);
+  position: relative;
 }
 
 .project-card:hover {
   transform: translateY(-1px);
   box-shadow: var(--shadow-md);
   border-color: var(--border-default);
+}
+
+.card-star {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  color: var(--text-muted);
+  transition: color var(--transition-fast), transform var(--transition-fast);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  z-index: 2;
+}
+
+.card-star:hover {
+  color: var(--warning);
+  background: var(--warning-soft);
+  transform: scale(1.1);
+}
+
+.card-star.starred {
+  color: var(--warning);
 }
 
 .card-header {

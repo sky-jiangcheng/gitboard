@@ -88,6 +88,7 @@ type Project struct {
 	RootPath      string `json:"root_path"`
 	LevelOverride int    `json:"level_override"`
 	IsAutoGrouped bool   `json:"is_auto_grouped"`
+	IsStarred     bool   `json:"is_starred"`
 	CreatedAt     string `json:"created_at"`
 }
 
@@ -121,7 +122,7 @@ func UpsertProject(db *sql.DB, name, rootPath string, levelOverride int, isAutoG
 
 // GetAllProjects returns all projects.
 func GetAllProjects(db *sql.DB) ([]Project, error) {
-	rows, err := db.Query("SELECT id, name, root_path, level_override, is_auto_grouped, created_at FROM projects ORDER BY name")
+	rows, err := db.Query("SELECT id, name, root_path, level_override, is_auto_grouped, is_starred, created_at FROM projects ORDER BY name")
 	if err != nil {
 		return nil, err
 	}
@@ -132,11 +133,11 @@ func GetAllProjects(db *sql.DB) ([]Project, error) {
 // GetProjectByID returns a single project by ID.
 func GetProjectByID(db *sql.DB, id int64) (*Project, error) {
 	row := db.QueryRow(
-		"SELECT id, name, root_path, level_override, is_auto_grouped, created_at FROM projects WHERE id = ?",
+		"SELECT id, name, root_path, level_override, is_auto_grouped, is_starred, created_at FROM projects WHERE id = ?",
 		id,
 	)
 	p := &Project{}
-	err := row.Scan(&p.ID, &p.Name, &p.RootPath, &p.LevelOverride, &p.IsAutoGrouped, &p.CreatedAt)
+	err := row.Scan(&p.ID, &p.Name, &p.RootPath, &p.LevelOverride, &p.IsAutoGrouped, &p.IsStarred, &p.CreatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -158,11 +159,39 @@ func DeleteAllProjects(db *sql.DB) error {
 	return err
 }
 
+// ToggleProjectStar flips the starred status of a project.
+func ToggleProjectStar(db *sql.DB, id int64) (bool, error) {
+	res, err := db.Exec(
+		"UPDATE projects SET is_starred = NOT is_starred WHERE id = ?",
+		id,
+	)
+	if err != nil {
+		return false, err
+	}
+	rows, _ := res.RowsAffected()
+	if rows == 0 {
+		return false, fmt.Errorf("project not found: %d", id)
+	}
+	var newVal bool
+	err = db.QueryRow("SELECT is_starred FROM projects WHERE id = ?", id).Scan(&newVal)
+	return newVal, err
+}
+
+// GetStarredProjects returns only starred projects.
+func GetStarredProjects(db *sql.DB) ([]Project, error) {
+	rows, err := db.Query("SELECT id, name, root_path, level_override, is_auto_grouped, is_starred, created_at FROM projects WHERE is_starred = 1 ORDER BY name")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanProjects(rows)
+}
+
 func scanProjects(rows *sql.Rows) ([]Project, error) {
 	var projects []Project
 	for rows.Next() {
 		var p Project
-		if err := rows.Scan(&p.ID, &p.Name, &p.RootPath, &p.LevelOverride, &p.IsAutoGrouped, &p.CreatedAt); err != nil {
+		if err := rows.Scan(&p.ID, &p.Name, &p.RootPath, &p.LevelOverride, &p.IsAutoGrouped, &p.IsStarred, &p.CreatedAt); err != nil {
 			return nil, err
 		}
 		projects = append(projects, p)

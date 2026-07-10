@@ -5,9 +5,10 @@ interface Props {
   project: Project
   date?: string
   todoCount?: number
+  onToggleStar?: (id: number) => void
 }
 
-function ProjectCard({ project, date, todoCount }: Props) {
+function ProjectCard({ project, date, todoCount, onToggleStar }: Props) {
   const netAdded = project.my_added - project.my_deleted
   const to = date ? `/project/${project.id}?date=${date}` : `/project/${project.id}`
 
@@ -15,8 +16,23 @@ function ProjectCard({ project, date, todoCount }: Props) {
     ? Math.round((project.my_added / (project.my_added + project.my_deleted)) * 100)
     : 50
 
+  const handleStarClick = (e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    onToggleStar?.(project.id)
+  }
+
   return (
     <Link to={to} className="project-card">
+      <button
+        className={`card-star ${project.is_starred ? 'starred' : ''}`}
+        onClick={handleStarClick}
+        title={project.is_starred ? '取消关注' : '关注项目'}
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill={project.is_starred ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+        </svg>
+      </button>
       <div className="card-header">
         <h3>{project.name}</h3>
         <div className="card-badges">

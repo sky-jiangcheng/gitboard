@@ -72,7 +72,7 @@ type ProjectResponse struct {
 }
 
 // GetProjects returns enriched project summaries, optionally filtered by date.
-func (a *App) GetProjects(date string) []ProjectResponse {
+func (a *App) GetProjects(date string, starredOnly bool) []ProjectResponse {
 	if date == "" {
 		date = stats.GetYesterdayDate()
 	}
@@ -81,7 +81,13 @@ func (a *App) GetProjects(date string) []ProjectResponse {
 		return nil
 	}
 
-	projects, err := db.GetAllProjects(a.db)
+	var projects []db.Project
+	var err error
+	if starredOnly {
+		projects, err = db.GetStarredProjects(a.db)
+	} else {
+		projects, err = db.GetAllProjects(a.db)
+	}
 	if err != nil {
 		log.Printf("get projects error: %v", err)
 		return nil
@@ -596,6 +602,11 @@ func (a *App) GetTodoCounts() []db.TodoCount {
 		counts = []db.TodoCount{}
 	}
 	return counts
+}
+
+// ToggleStar flips the starred status of a project.
+func (a *App) ToggleStar(projectID int64) (bool, error) {
+	return db.ToggleProjectStar(a.db, projectID)
 }
 
 // --- helpers (not exposed to frontend) ---

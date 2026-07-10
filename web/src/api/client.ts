@@ -10,6 +10,7 @@ export interface Project {
   root_path: string
   level_override: number
   is_auto_grouped: boolean
+  is_starred: boolean
   created_at: string
   repo_count: number
   total_added: number
@@ -136,10 +137,12 @@ async function http<T>(url: string, options?: RequestInit): Promise<T> {
 
 // --- Public API ---
 
-export function getProjects(date?: string): Promise<Project[]> {
-  if (isWails()) return wail<Project[]>('GetProjects', date || '').then(d => d ?? [])
-  const params = date ? `?date=${date}` : ''
-  return http<Project[]>(`/projects${params}`).then(data => data ?? [])
+export function getProjects(date?: string, starredOnly = false): Promise<Project[]> {
+  if (isWails()) return wail<Project[]>('GetProjects', date || '', starredOnly).then(d => d ?? [])
+  const params = new URLSearchParams()
+  if (date) params.set('date', date)
+  if (starredOnly) params.set('starred', '1')
+  return http<Project[]>(`/projects?${params.toString()}`).then(data => data ?? [])
 }
 
 export function getProjectDetail(id: number): Promise<ProjectDetail> {
@@ -151,6 +154,11 @@ export function getProjectStats(id: number, date?: string): Promise<DailyStat[]>
   if (isWails()) return wail<DailyStat[]>('GetProjectStats', id, date || '').then(d => d ?? [])
   const params = date ? `?date=${date}` : ''
   return http<DailyStat[]>(`/projects/${id}/stats${params}`).then(data => data ?? [])
+}
+
+export function toggleStar(id: number): Promise<boolean> {
+  if (isWails()) return wail<boolean>('ToggleStar', id)
+  return http<{ starred: boolean }>(`/projects/${id}/star`, { method: 'POST' }).then(r => r.starred)
 }
 
 export function updateProjectLevel(

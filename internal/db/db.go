@@ -32,6 +32,11 @@ func InitDB(dbPath string) (*sql.DB, error) {
 		return nil, fmt.Errorf("failed to create tables: %w", err)
 	}
 
+	if err := upgradeSchema(db); err != nil {
+		db.Close() //nolint:errcheck
+		return nil, fmt.Errorf("failed to upgrade schema: %w", err)
+	}
+
 	if err := insertDefaults(db); err != nil {
 		db.Close() //nolint:errcheck
 		return nil, fmt.Errorf("failed to insert defaults: %w", err)
@@ -109,6 +114,13 @@ func createTables(db *sql.DB) error {
 
 	_, err := db.Exec(schema)
 	return err
+}
+
+// upgradeSchema applies incremental schema changes for existing databases.
+func upgradeSchema(db *sql.DB) error {
+	// Add is_starred to projects (introduced v0.11.0)
+	_, _ = db.Exec("ALTER TABLE projects ADD COLUMN is_starred INTEGER DEFAULT 0")
+	return nil
 }
 
 // insertDefaults inserts default configuration values if they don't exist.

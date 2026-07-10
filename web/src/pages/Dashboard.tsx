@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { getProjects, getSummary, triggerScan, getTodoCounts, getScanStatus, Project, Summary, TodoCount } from '../api/client'
+import { getProjects, getSummary, triggerScan, getTodoCounts, getScanStatus, toggleStar, Project, Summary, TodoCount } from '../api/client'
 import SummaryBar from '../components/SummaryBar'
 import Heatmap from '../components/Heatmap'
 import StatusBar from '../components/StatusBar'
@@ -31,14 +31,15 @@ function Dashboard() {
   const [sortKey, setSortKey] = useState<SortKey>('my_added')
   const [confirmScan, setConfirmScan] = useState(false)
   const [todoCounts, setTodoCounts] = useState<TodoCount[]>([])
+  const [showStarredOnly, setShowStarredOnly] = useState(true)
   const pollTimer = useRef<number | null>(null)
 
-  const fetchData = async (selectedDate: string) => {
+  const fetchData = async (selectedDate: string, starredOnly = showStarredOnly) => {
     setLoading(true)
     setError('')
     try {
       const [projData, sumData, counts] = await Promise.all([
-        getProjects(selectedDate),
+        getProjects(selectedDate, starredOnly),
         getSummary(selectedDate),
         getTodoCounts(),
       ])
@@ -53,6 +54,19 @@ function Dashboard() {
     }
   }
 
+  const handleToggleStar = async (projectId: number) => {
+    try {
+      const newStarred = await toggleStar(projectId)
+      setProjects(prev => prev.map(p => p.id === projectId ? { ...p, is_starred: newStarred } : p))
+      if (showStarredOnly && !newStarred) {
+        setProjects(prev => prev.filter(p => p.id !== projectId))
+      }
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : '操作失败'
+      setError(msg)
+    }
+  }
+
   useEffect(() => {
     fetchData(date)
     checkScanStatus()
@@ -60,6 +74,10 @@ function Dashboard() {
       if (pollTimer.current) clearInterval(pollTimer.current)
     }
   }, [date])
+
+  useEffect(() => {
+    fetchData(date, showStarredOnly)
+  }, [showStarredOnly])
 
   const checkScanStatus = async () => {
     try {
@@ -143,6 +161,20 @@ function Dashboard() {
         <div className="dashboard-controls">
           <DatePicker value={date} onChange={setDate} />
           <div className="dashboard-actions">
+            <div className="filter-toggle">
+              <button
+                className={`filter-btn ${!showStarredOnly ? 'active' : ''}`}
+                onClick={() => setShowStarredOnly(false)}
+              >
+                全部
+              </button>
+              <button
+                className={`filter-btn ${showStarredOnly ? 'active' : ''}`}
+                onClick={() => setShowStarredOnly(true)}
+              >
+                关注
+              </button>
+            </div>
             <div className="sort-control">
               <label>排序：</label>
               <select
@@ -202,22 +234,34 @@ function Dashboard() {
           </div>
         ) : sorted.length === 0 ? (
           <div className="empty-state">
-            <div className="empty-icon">&#128269;</div>
-            <h3>暂无项目数据</h3>
-            <p>GitBoard 尚未扫描到任何 Git 仓库。请先配置扫描目录。</p>
+            <div className="empty-icon">{showStarredOnly ? '&#11088;' : '&#128269;'}</div>
+            <h3>{showStarredOnly ? '暂无关注项目' : '暂无项目数据'}</h3>
+            <p>
+              {showStarredOnly
+                ? '你还没有关注任何项目。点击项目卡片右上角的星标即可关注，或切换到「全部」查看所有项目。'
+                : 'GitBoard 尚未扫描到任何 Git 仓库。请先配置扫描目录。'}
+            </p>
             <div className="empty-actions">
-              <button className="btn btn-primary" onClick={() => setConfirmScan(true)}>
-                开始扫描
-              </button>
-              <a href="/settings" className="btn btn-secondary">
-                配置目录
-              </a>
+              {showStarredOnly ? (
+                <button className="btn btn-primary" onClick={() => setShowStarredOnly(false)}>
+                  查看全部项目
+                </button>
+              ) : (
+                <>
+                  <button className="btn btn-primary" onClick={() => setConfirmScan(true)}>
+                    开始扫描
+                  </button>
+                  <a href="/#/settings" className="btn btn-secondary">
+                    配置目录
+                  </a>
+                </>
+              )}
             </div>
           </div>
         ) : (
           <div className="project-grid">
             {sorted.map((p) => (
-              <ProjectCard key={p.id} project={p} date={date} todoCount={todoMap.get(p.id)} />
+              <ProjectCard key={p.id} project={p} date={date} todoCount={todoMap.get(p.id)} onToggleStar={handleToggleStar} />
             ))}
           </div>
         )}
