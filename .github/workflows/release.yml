@@ -97,19 +97,26 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           mkdir -p release
-          # Wails produces .app bundle in build/bin/
           APP=$(ls -d build/bin/*.app 2>/dev/null | head -1)
           if [ -n "$APP" ]; then
             APP_NAME=$(basename "$APP")
-            # Create a staging folder with app + Applications symlink
             STAGING=$(mktemp -d)
             cp -R "$APP" "$STAGING/"
             ln -s /Applications "$STAGING/Applications"
-            # Create DMG
-            hdiutil create -volname "$APP_NAME" \
-              -srcfolder "$STAGING" \
-              -ov -format UDZO \
-              "release/gitboard-${{ matrix.target }}.dmg"
+            mkdir -p "$STAGING/.background"
+            sips -s format png "build/dmg-background.svg" --out "$STAGING/.background/background.png"
+            pip install create-dmg 2>/dev/null || brew install create-dmg 2>/dev/null || curl -sL https://github.com/create-dmg/create-dmg/archive/refs/tags/v1.0.0.tar.gz | tar -xz && cd create-dmg-1.0.0 && sudo make install && cd ..
+            create-dmg \
+              --volname "$APP_NAME" \
+              --window-size 600 400 \
+              --icon-size 80 \
+              --icon "$APP_NAME" 100 280 \
+              --hide-extension "$APP_NAME" \
+              --app-drop-link 400 280 \
+              --background "$STAGING/.background/background.png" \
+              --format UDZO \
+              "release/gitboard-${{ matrix.target }}.dmg" \
+              "$STAGING/"
             rm -rf "$STAGING"
           fi
           echo "RELEASE_DIR=release" >> $GITHUB_ENV
