@@ -18,6 +18,15 @@ type Result struct {
 	LinesDeleted int
 }
 
+// DailyEntry holds per-day stats for heatmap/history use.
+type DailyEntry struct {
+	Date         string `json:"date"`
+	FilesChanged int    `json:"files_changed"`
+	LinesAdded   int    `json:"lines_added"`
+	LinesDeleted int    `json:"lines_deleted"`
+	Commits      int    `json:"commits"`
+}
+
 // QueryTimeout is the maximum time allowed for a single git log query.
 const QueryTimeout = 30 * time.Second
 
@@ -348,84 +357,81 @@ func parseTimestamp(s string) int64 {
 	return t.Unix()
 }
 
-// HeatmapEntry holds a single day's contribution data for the heatmap.
-type HeatmapEntry struct {
-	Date        string `json:"date"`
-	LinesAdded  int    `json:"lines_added"`
-	LinesDeleted int   `json:"lines_deleted"`
-	Commits     int    `json:"commits"`
-}
+// QueryStatsRange queries daily stats for a range of dates and returns per-day aggregates.
+func QueryStatsRange(repoPath, startDate, endDate, author string) ([]DailyEntry, error) {
+	if err := ValidateDate(startDate); err != nil {
+		return nil, err
+	}
+	if err := ValidateDate(endDate); err != nil {
+		return nil, err
+	}
+	if err := ValidateAuthor(author); err != nil {
+		return nil, err
+	}
 
-// GetGitHeatmapData queries git history directly for heatmap data.
-// It runs git log across all repos for the past year and aggregates by date.
-func GetGitHeatmapData(repoPaths []string, author string) []HeatmapEntry {
-	startDate := time.Now().AddDate(0, 0, -365).Format("2006-01-02")
-	agg := make(map[string]*HeatmapEntry)
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
 
-	for _, repoPath := range repoPaths {
-		args := []string{
-			"log",
-			"--after=" + startDate,
-			"--pretty=format:%ad",
-			"--date=short",
-			"--shortstat",
+	args := []string{
+		"log",
+		"--after=" + startDate + " 00:00:00",
+		"--before=" + endDate + " 23:59:59",
+		"--pretty=format:%ad",
+		"--date=short",
+		"--shortstat",
+	}
+	if author != "" {
+		args = append(args, "--author="+author)
+	}
+
+	//nolint:gosec
+	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd.Dir = repoPath
+	out, err := cmd.Output()
+	if err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			return nil, fmt.Errorf("query timed out")
 		}
-		if author != "" {
-			args = append(args, "--author="+author)
-		}
+		return nil, err
+	}
 
-		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-		cmd := exec.CommandContext(ctx, "git", args...)
-		cmd.Dir = repoPath
-		out, err := cmd.Output()
-		cancel()
-		if err != nil {
+	agg := make(map[string]*DailyEntry)
+	lines := strings.Split(string(out), "\n")
+	var currentDate string
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
 			continue
 		}
-
-		// Parse output: alternating date lines and shortstat lines
-		lines := strings.Split(string(out), "\n")
-		var currentDate string
-		for _, line := range lines {
-			line = strings.TrimSpace(line)
-			if line == "" {
-				continue
+		if datePattern.MatchString(line) {
+			currentDate = line
+			if _, ok := agg[currentDate]; !ok {
+				agg[currentDate] = &DailyEntry{Date: currentDate}
 			}
-			// Check if this is a date line (YYYY-MM-DD)
-			if datePattern.MatchString(line) {
-				currentDate = line
-				continue
-			}
-			// Otherwise it's a shortstat line
-			if currentDate != "" {
-				_, added, deleted := parseStatLine(line)
-				entry, ok := agg[currentDate]
-				if !ok {
-					entry = &HeatmapEntry{Date: currentDate}
-					agg[currentDate] = entry
-				}
-				entry.Commits++
-				entry.LinesAdded += added
-				entry.LinesDeleted += deleted
-				currentDate = "" // reset for next commit
-			}
+			agg[currentDate].Commits++
+			continue
+		}
+		if currentDate != "" {
+			files, added, deleted := parseStatLine(line)
+			agg[currentDate].FilesChanged += files
+			agg[currentDate].LinesAdded += added
+			agg[currentDate].LinesDeleted += deleted
 		}
 	}
 
 	if len(agg) == 0 {
-		return nil
+		return nil, nil
 	}
 
-	// Convert map to sorted slice
-	entries := make([]HeatmapEntry, 0, len(agg))
-	for _, entry := range agg {
-		entries = append(entries, *entry)
+	entries := make([]DailyEntry, 0, len(agg))
+	for _, e := range agg {
+		entries = append(entries, *e)
 	}
 	sort.Slice(entries, func(i, j int) bool {
 		return entries[i].Date < entries[j].Date
 	})
 
-	return entries
+	return entries, nil
 }
 
 func GetTodayDate() string {

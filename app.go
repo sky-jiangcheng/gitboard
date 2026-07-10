@@ -418,27 +418,19 @@ type HeatmapResponse struct {
 	Days []db.HeatmapDay `json:"days"`
 }
 
-// GetHeatmapData returns daily commit stats for the past year by querying git directly.
+// GetHeatmapData returns daily commit stats for the past year.
 func (a *App) GetHeatmapData() *HeatmapResponse {
-	repos, _ := db.GetAllRepositories(a.db)
-	repoPaths := make([]string, 0, len(repos))
-	for _, r := range repos {
-		repoPaths = append(repoPaths, r.Path)
+	endDate := stats.GetTodayDate()
+	startDate := time.Now().AddDate(0, 0, -365).Format("2006-01-02")
+
+	days, err := db.GetHeatmapData(a.db, startDate, endDate, a.gitUser)
+	if err != nil {
+		log.Printf("get heatmap error: %v", err)
+		return &HeatmapResponse{Days: []db.HeatmapDay{}}
 	}
-
-	entries := stats.GetGitHeatmapData(repoPaths, a.gitUser)
-
-	// Convert stats.HeatmapEntry to db.HeatmapDay
-	days := make([]db.HeatmapDay, 0, len(entries))
-	for _, e := range entries {
-		days = append(days, db.HeatmapDay{
-			Date:         e.Date,
-			LinesAdded:   e.LinesAdded,
-			LinesDeleted: e.LinesDeleted,
-			Commits:      e.Commits,
-		})
+	if days == nil {
+		days = []db.HeatmapDay{}
 	}
-
 	return &HeatmapResponse{Days: days}
 }
 
@@ -496,26 +488,31 @@ func (a *App) refreshAllStats(date string) {
 	if err != nil {
 		return
 	}
+
+	startDate := time.Now().AddDate(0, 0, -365).Format("2006-01-02")
+	endDate := stats.GetTodayDate()
+
 	for _, repo := range repos {
-		allResult, err := stats.QueryStats(repo.Path, date, "")
-		if err != nil {
-			continue
-		}
-		if allResult.FilesChanged > 0 || allResult.LinesAdded > 0 || allResult.LinesDeleted > 0 {
-			if err := db.UpsertDailyStat(a.db, repo.ID, date, "all",
-				allResult.FilesChanged, allResult.LinesAdded, allResult.LinesDeleted); err != nil {
-				log.Printf("upsert daily stat error: %v", err)
+		// Backfill all authors for the past year
+		allEntries, err := stats.QueryStatsRange(repo.Path, startDate, endDate, "")
+		if err == nil && allEntries != nil {
+			for _, e := range allEntries {
+				if e.FilesChanged > 0 || e.LinesAdded > 0 || e.LinesDeleted > 0 {
+					_ = db.UpsertDailyStat(a.db, repo.ID, e.Date, "all",
+						e.FilesChanged, e.LinesAdded, e.LinesDeleted)
+				}
 			}
 		}
+
+		// Backfill git user stats for the past year
 		if a.gitUser != "" {
-			myResult, err := stats.QueryStats(repo.Path, date, a.gitUser)
-			if err != nil {
-				continue
-			}
-			if myResult.FilesChanged > 0 || myResult.LinesAdded > 0 || myResult.LinesDeleted > 0 {
-				if err := db.UpsertDailyStat(a.db, repo.ID, date, a.gitUser,
-					myResult.FilesChanged, myResult.LinesAdded, myResult.LinesDeleted); err != nil {
-					log.Printf("upsert daily stat error: %v", err)
+			myEntries, err := stats.QueryStatsRange(repo.Path, startDate, endDate, a.gitUser)
+			if err == nil && myEntries != nil {
+				for _, e := range myEntries {
+					if e.FilesChanged > 0 || e.LinesAdded > 0 || e.LinesDeleted > 0 {
+						_ = db.UpsertDailyStat(a.db, repo.ID, e.Date, a.gitUser,
+							e.FilesChanged, e.LinesAdded, e.LinesDeleted)
+					}
 				}
 			}
 		}
