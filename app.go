@@ -418,19 +418,27 @@ type HeatmapResponse struct {
 	Days []db.HeatmapDay `json:"days"`
 }
 
-// GetHeatmapData returns daily commit stats for the past year.
+// GetHeatmapData returns daily commit stats for the past year by querying git directly.
 func (a *App) GetHeatmapData() *HeatmapResponse {
-	endDate := stats.GetTodayDate()
-	startDate := time.Now().AddDate(0, 0, -365).Format("2006-01-02")
+	repos, _ := db.GetAllRepositories(a.db)
+	repoPaths := make([]string, 0, len(repos))
+	for _, r := range repos {
+		repoPaths = append(repoPaths, r.Path)
+	}
 
-	days, err := db.GetHeatmapData(a.db, startDate, endDate, a.gitUser)
-	if err != nil {
-		log.Printf("get heatmap error: %v", err)
-		return &HeatmapResponse{Days: []db.HeatmapDay{}}
+	entries := stats.GetGitHeatmapData(repoPaths, a.gitUser)
+
+	// Convert stats.HeatmapEntry to db.HeatmapDay
+	days := make([]db.HeatmapDay, 0, len(entries))
+	for _, e := range entries {
+		days = append(days, db.HeatmapDay{
+			Date:         e.Date,
+			LinesAdded:   e.LinesAdded,
+			LinesDeleted: e.LinesDeleted,
+			Commits:      e.Commits,
+		})
 	}
-	if days == nil {
-		days = []db.HeatmapDay{}
-	}
+
 	return &HeatmapResponse{Days: days}
 }
 
