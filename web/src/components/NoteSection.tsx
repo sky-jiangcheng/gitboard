@@ -14,6 +14,7 @@ function NoteSection({ projectId }: Props) {
   const [newContent, setNewContent] = useState('')
   const [saving, setSaving] = useState(false)
   const [previewId, setPreviewId] = useState<number | null>(null)
+  const [filter, setFilter] = useState<'all' | 'knowledge' | 'other'>('all')
 
   const fetchNotes = useCallback(() => {
     listNotes(projectId).then(setNotes).finally(() => setLoading(false))
@@ -55,10 +56,29 @@ function NoteSection({ projectId }: Props) {
     return { __html: marked.parse(content) as string }
   }
 
+  // Extract title from note content (first line, stripped of markdown)
+  const getNoteTitle = (content: string): string => {
+    const firstLine = content.split('\n')[0].replace(/^#+\s*/, '').replace(/^\*\*/, '').replace(/\*\*$/, '').trim()
+    return firstLine || '笔记'
+  }
+
+  // Check if note looks like a knowledge note (has frontmatter or starts with a heading)
+  const isKnowledgeNote = (content: string): boolean => {
+    return content.startsWith('---') || content.startsWith('# ') || content.startsWith('## ')
+  }
+
+  const filteredNotes = notes.filter(n => {
+    if (filter === 'knowledge') return isKnowledgeNote(n.content)
+    if (filter === 'other') return !isKnowledgeNote(n.content)
+    return true
+  })
+
   if (loading) {
     return (
-      <div className="panel-section">
-        <h3>笔记</h3>
+      <div className="note-section">
+        <div className="note-header">
+          <h3>知识笔记</h3>
+        </div>
         <div className="skeleton skeleton-text" style={{ height: 60, marginBottom: 8 }} />
         <div className="skeleton skeleton-text" style={{ height: 60 }} />
       </div>
@@ -66,9 +86,9 @@ function NoteSection({ projectId }: Props) {
   }
 
   return (
-    <div className="panel-section">
+    <div className="note-section">
       <div className="note-header">
-        <h3>笔记 ({notes.length})</h3>
+        <h3>知识笔记 ({notes.length})</h3>
         {!isNew && !editing && (
           <button className="btn btn-sm btn-primary" onClick={() => setIsNew(true)}>
             新建笔记
@@ -76,15 +96,39 @@ function NoteSection({ projectId }: Props) {
         )}
       </div>
 
+      {/* Filter tabs */}
+      {notes.length > 0 && (
+        <div className="note-filters">
+          <button
+            className={`filter-btn ${filter === 'all' ? 'active' : ''}`}
+            onClick={() => setFilter('all')}
+          >
+            全部
+          </button>
+          <button
+            className={`filter-btn ${filter === 'knowledge' ? 'active' : ''}`}
+            onClick={() => setFilter('knowledge')}
+          >
+            知识
+          </button>
+          <button
+            className={`filter-btn ${filter === 'other' ? 'active' : ''}`}
+            onClick={() => setFilter('other')}
+          >
+            其他
+          </button>
+        </div>
+      )}
+
       {/* New note form */}
       {isNew && (
         <div className="note-editor">
           <textarea
             value={newContent}
             onChange={e => setNewContent(e.target.value)}
-            placeholder="输入 Markdown 内容..."
+            placeholder="输入 Markdown 内容...\n支持知识库格式：\n  # 标题\n  ---\n  key: value\n  ---\n  正文内容"
             className="form-input note-textarea"
-            rows={6}
+            rows={8}
           />
           <div className="note-editor-actions">
             <button className="btn btn-primary btn-sm" onClick={handleCreate} disabled={saving || !newContent.trim()}>
@@ -98,11 +142,11 @@ function NoteSection({ projectId }: Props) {
       )}
 
       {/* Note list */}
-      {notes.length === 0 && !isNew ? (
-        <p className="empty-hint">暂无笔记</p>
+      {filteredNotes.length === 0 && !isNew ? (
+        <p className="empty-hint">暂无{filter !== 'all' ? '匹配的' : ''}笔记</p>
       ) : (
         <div className="note-list">
-          {notes.map(note => (
+          {filteredNotes.map(note => (
             <div key={note.id} className="note-card">
               {editing?.id === note.id ? (
                 <div className="note-editor">
@@ -110,7 +154,7 @@ function NoteSection({ projectId }: Props) {
                     value={editing.content}
                     onChange={e => setEditing({ ...editing, content: e.target.value })}
                     className="form-input note-textarea"
-                    rows={5}
+                    rows={8}
                   />
                   <div className="note-editor-actions">
                     <button className="btn btn-primary btn-sm" onClick={handleUpdate} disabled={saving || !editing.content.trim()}>
@@ -129,6 +173,10 @@ function NoteSection({ projectId }: Props) {
                 </div>
               ) : (
                 <>
+                  <div className="note-title-row">
+                    <span className="note-title-text">{getNoteTitle(note.content)}</span>
+                    {isKnowledgeNote(note.content) && <span className="badge-note-sm">知识</span>}
+                  </div>
                   <div className="note-body markdown-body" dangerouslySetInnerHTML={renderMarkdown(note.content)} />
                   <div className="note-meta">
                     <span className="note-time">

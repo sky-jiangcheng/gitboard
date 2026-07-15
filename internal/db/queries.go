@@ -633,6 +633,76 @@ func HasStatsSince(dbConn *sql.DB, startDate, author string) (bool, error) {
 	return earliest <= startDate, nil
 }
 
+// -- NoteCounts --
+
+// NoteCount holds the note summary for a project.
+type NoteCount struct {
+	ProjectID int64 `json:"project_id"`
+	Count     int   `json:"count"`
+}
+
+// GetNoteCounts returns the count of notes per project.
+func GetNoteCounts(db *sql.DB) ([]NoteCount, error) {
+	rows, err := db.Query(`
+		SELECT
+			project_id,
+			COUNT(*) AS count
+		FROM project_notes
+		GROUP BY project_id
+		ORDER BY project_id
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var counts []NoteCount
+	for rows.Next() {
+		var c NoteCount
+		if err := rows.Scan(&c.ProjectID, &c.Count); err != nil {
+			return nil, err
+		}
+		counts = append(counts, c)
+	}
+	return counts, rows.Err()
+}
+
+// SearchNotesResult holds a single note match from global search.
+type SearchNotesResult struct {
+	NoteID    int64  `json:"note_id"`
+	Content   string `json:"content"`
+	ProjectID int64  `json:"project_id"`
+	ProjectName string `json:"project_name"`
+	UpdatedAt string `json:"updated_at"`
+}
+
+// SearchNotes searches notes content across all projects.
+func SearchNotes(db *sql.DB, query string) ([]SearchNotesResult, error) {
+	like := "%" + query + "%"
+	rows, err := db.Query(`
+		SELECT pn.id, pn.content, pn.project_id, p.name, pn.updated_at
+		FROM project_notes pn
+		JOIN projects p ON pn.project_id = p.id
+		WHERE pn.content LIKE ?
+		ORDER BY pn.updated_at DESC
+		LIMIT 50
+	`, like)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var results []SearchNotesResult
+	for rows.Next() {
+		var r SearchNotesResult
+		if err := rows.Scan(&r.NoteID, &r.Content, &r.ProjectID, &r.ProjectName, &r.UpdatedAt); err != nil {
+			return nil, err
+		}
+		results = append(results, r)
+	}
+	return results, rows.Err()
+}
+
 // -- TodoCounts --
 
 // TodoCount holds the todo summary for a project.

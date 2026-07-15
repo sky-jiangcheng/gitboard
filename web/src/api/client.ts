@@ -92,6 +92,19 @@ export interface TodoCount {
   total: number
 }
 
+export interface NoteCount {
+  project_id: number
+  count: number
+}
+
+export interface SearchNotesResult {
+  note_id: number
+  content: string
+  project_id: number
+  project_name: string
+  updated_at: string
+}
+
 export interface HeatmapDay {
   date: string
   lines_added: number
@@ -298,6 +311,16 @@ export function getTodoCounts(): Promise<TodoCount[]> {
 export function getHeatmapData(): Promise<HeatmapResponse> {
   if (isWails()) return wail<HeatmapResponse>('GetHeatmapData').then(d => d ?? { days: [] })
   return http<HeatmapResponse>('/heatmap').then(d => d ?? { days: [] })
+}
+
+export function getNoteCounts(): Promise<NoteCount[]> {
+  if (isWails()) return wail<NoteCount[]>('GetNoteCounts').then(d => d ?? [])
+  return http<NoteCount[]>('/note-counts').then(d => d ?? [])
+}
+
+export function searchNotes(query: string): Promise<SearchNotesResult[]> {
+  if (isWails()) return wail<SearchNotesResult[]>('SearchNotes', query).then(d => d ?? [])
+  return http<SearchNotesResult[]>(`/notes/search?q=${encodeURIComponent(query)}`).then(d => d ?? [])
 }
 
 export function getStatusBar(): Promise<StatusBarData> {

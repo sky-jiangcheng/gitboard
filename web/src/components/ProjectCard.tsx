@@ -5,10 +5,11 @@ interface Props {
   project: Project
   date?: string
   todoCount?: number
+  noteCount?: number
   onToggleStar?: (id: number) => void
 }
 
-function ProjectCard({ project, date, todoCount, onToggleStar }: Props) {
+function ProjectCard({ project, date, todoCount, noteCount, onToggleStar }: Props) {
   const netAdded = project.my_added - project.my_deleted
   const to = date ? `/project/${project.id}?date=${date}` : `/project/${project.id}`
 
@@ -36,6 +37,9 @@ function ProjectCard({ project, date, todoCount, onToggleStar }: Props) {
       <div className="card-header">
         <h3>{project.name}</h3>
         <div className="card-badges">
+          {noteCount !== undefined && noteCount > 0 && (
+            <span className="badge badge-note" title="知识笔记">{noteCount}</span>
+          )}
           {todoCount !== undefined && todoCount > 0 && (
             <span className="badge badge-todo">{todoCount}</span>
           )}

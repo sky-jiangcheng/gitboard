@@ -604,6 +604,38 @@ func (a *App) GetTodoCounts() []db.TodoCount {
 	return counts
 }
 
+// GetNoteCounts returns the count of notes per project.
+func (a *App) GetNoteCounts() []db.NoteCount {
+	counts, err := db.GetNoteCounts(a.db)
+	if err != nil {
+		log.Printf("get note counts error: %v", err)
+		return nil
+	}
+	if counts == nil {
+		counts = []db.NoteCount{}
+	}
+	return counts
+}
+
+// SearchNotesResult wraps the db type for JSON serialization.
+type SearchNotesResult = db.SearchNotesResult
+
+// SearchNotes searches notes content across all projects.
+func (a *App) SearchNotes(query string) []db.SearchNotesResult {
+	if strings.TrimSpace(query) == "" {
+		return nil
+	}
+	results, err := db.SearchNotes(a.db, query)
+	if err != nil {
+		log.Printf("search notes error: %v", err)
+		return nil
+	}
+	if results == nil {
+		results = []db.SearchNotesResult{}
+	}
+	return results
+}
+
 // ToggleStar flips the starred status of a project.
 func (a *App) ToggleStar(projectID int64) (bool, error) {
 	return db.ToggleProjectStar(a.db, projectID)

@@ -286,6 +286,88 @@ body {
   gap: 12px;
 }
 
+.search-box {
+  position: relative;
+}
+
+.search-input {
+  width: 200px;
+  padding: 7px 12px 7px 32px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  transition: all 0.15s;
+}
+
+.search-input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px var(--primary-soft);
+  width: 260px;
+}
+
+.search-input::placeholder {
+  color: var(--text-muted);
+}
+
+.search-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  min-width: 320px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+  z-index: 100;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.search-loading,
+.search-empty {
+  padding: 16px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.search-result-item {
+  display: block;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border-subtle);
+  text-decoration: none;
+  transition: background 0.1s;
+}
+
+.search-result-item:last-child {
+  border-bottom: none;
+}
+
+.search-result-item:hover {
+  background: var(--bg-tertiary);
+}
+
+.search-result-header {
+  margin-bottom: 4px;
+}
+
+.search-result-project {
+  font-size: 11px;
+  color: var(--primary);
+  font-weight: 500;
+}
+
+.search-result-preview {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+  white-space: pre-wrap;
+}
+
 .sort-control {
   display: flex;
   align-items: center;
@@ -791,6 +873,15 @@ body {
   font-weight: 600;
 }
 
+.badge-note {
+  background: var(--primary-soft, rgba(74, 125, 74, 0.15));
+  color: var(--primary, #4a7d4a);
+  border-radius: 12px;
+  padding: 2px 8px;
+  font-size: 10px;
+  font-weight: 600;
+}
+
 .card-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
@@ -1207,6 +1298,15 @@ body {
   font-weight: 600;
 }
 
+.badge-note {
+  background: var(--primary-soft, rgba(74, 125, 74, 0.15));
+  color: var(--primary, #4a7d4a);
+  border-radius: 20px;
+  padding: 2px 9px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
 .card-badges {
   display: flex;
   gap: 6px;
@@ -1345,6 +1445,51 @@ body {
 
 .note-header h3 {
   margin-bottom: 0;
+}
+
+.note-filters {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.note-filters .filter-btn {
+  padding: 3px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border-subtle);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.note-filters .filter-btn.active {
+  background: var(--primary-soft, rgba(74, 125, 74, 0.15));
+  color: var(--primary, #4a7d4a);
+  border-color: var(--primary, #4a7d4a);
+}
+
+.note-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.note-title-text {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.badge-note-sm {
+  background: var(--primary-soft, rgba(74, 125, 74, 0.15));
+  color: var(--primary, #4a7d4a);
+  border-radius: 10px;
+  padding: 1px 7px;
+  font-size: 10px;
+  font-weight: 500;
 }
 
 .note-list {

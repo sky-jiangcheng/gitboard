@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { getProjects, getSummary, triggerScan, getTodoCounts, getScanStatus, toggleStar, Project, Summary, TodoCount } from '../api/client'
+import { getProjects, getSummary, triggerScan, getTodoCounts, getNoteCounts, searchNotes, getScanStatus, toggleStar, Project, Summary, TodoCount, NoteCount, SearchNotesResult } from '../api/client'
 import SummaryBar from '../components/SummaryBar'
 import Heatmap from '../components/Heatmap'
 import StatusBar from '../components/StatusBar'
@@ -31,21 +31,28 @@ function Dashboard() {
   const [sortKey, setSortKey] = useState<SortKey>('my_added')
   const [confirmScan, setConfirmScan] = useState(false)
   const [todoCounts, setTodoCounts] = useState<TodoCount[]>([])
+  const [noteCounts, setNoteCounts] = useState<NoteCount[]>([])
   const [showStarredOnly, setShowStarredOnly] = useState(true)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchResults, setSearchResults] = useState<SearchNotesResult[] | null>(null)
+  const [searching, setSearching] = useState(false)
   const pollTimer = useRef<number | null>(null)
+  const searchRef = useRef<HTMLDivElement>(null)
 
   const fetchData = async (selectedDate: string, starredOnly = showStarredOnly) => {
     setLoading(true)
     setError('')
     try {
-      const [projData, sumData, counts] = await Promise.all([
+      const [projData, sumData, counts, noteCountsData] = await Promise.all([
         getProjects(selectedDate, starredOnly),
         getSummary(selectedDate),
         getTodoCounts(),
+        getNoteCounts(),
       ])
       setProjects(projData)
       setSummary(sumData)
       setTodoCounts(counts)
+      setNoteCounts(noteCountsData)
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : '加载失败'
       setError(msg)
@@ -123,6 +130,35 @@ function Dashboard() {
     }
   }
 
+  const handleSearch = async (query: string) => {
+    setSearchQuery(query)
+    if (!query.trim()) {
+      setSearchResults(null)
+      return
+    }
+    setSearching(true)
+    try {
+      const results = await searchNotes(query)
+      setSearchResults(results)
+    } catch {
+      setSearchResults([])
+    } finally {
+      setSearching(false)
+    }
+  }
+
+  // Close search on click outside
+  useEffect(() => {
+    const handleClick = (e: MouseEvent) => {
+      if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
+        setSearchResults(null)
+        setSearchQuery('')
+      }
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [])
+
   const sorted = useMemo(() => {
     const list = [...projects]
     list.sort((a, b) => {
@@ -148,6 +184,12 @@ function Dashboard() {
     return map
   }, [todoCounts])
 
+  const noteMap = useMemo(() => {
+    const map = new Map<number, number>()
+    noteCounts.forEach(c => map.set(c.project_id, c.count))
+    return map
+  }, [noteCounts])
+
   const globalTodoCount = useMemo(() => {
     return todoCounts.reduce((sum, c) => sum + c.count, 0)
   }, [todoCounts])
@@ -161,6 +203,39 @@ function Dashboard() {
         <div className="dashboard-controls">
           <DatePicker value={date} onChange={setDate} />
           <div className="dashboard-actions">
+            <div className="search-box" ref={searchRef}>
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={e => handleSearch(e.target.value)}
+                placeholder="搜索知识笔记..."
+                className="form-input search-input"
+              />
+              {searchResults !== null && (
+                <div className="search-dropdown">
+                  {searching ? (
+                    <div className="search-loading">搜索中...</div>
+                  ) : searchResults.length === 0 ? (
+                    <div className="search-empty">未找到匹配的笔记</div>
+                  ) : (
+                    searchResults.map(r => (
+                      <a
+                        key={r.note_id}
+                        href={`/#/project/${r.project_id}`}
+                        className="search-result-item"
+                      >
+                        <div className="search-result-header">
+                          <span className="search-result-project">{r.project_name}</span>
+                        </div>
+                        <div className="search-result-preview">
+                          {r.content.length > 120 ? r.content.slice(0, 120) + '...' : r.content}
+                        </div>
+                      </a>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
             <div className="filter-toggle">
               <button
                 className={`filter-btn ${!showStarredOnly ? 'active' : ''}`}
@@ -261,7 +336,7 @@ function Dashboard() {
         ) : (
           <div className="project-grid">
             {sorted.map((p) => (
-              <ProjectCard key={p.id} project={p} date={date} todoCount={todoMap.get(p.id)} onToggleStar={handleToggleStar} />
+              <ProjectCard key={p.id} project={p} date={date} todoCount={todoMap.get(p.id)} noteCount={noteMap.get(p.id)} onToggleStar={handleToggleStar} />
             ))}
           </div>
         )}
