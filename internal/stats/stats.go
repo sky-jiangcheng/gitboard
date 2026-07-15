@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os/exec"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -15,6 +16,15 @@ type Result struct {
 	FilesChanged int
 	LinesAdded   int
 	LinesDeleted int
+}
+
+// DailyEntry holds per-day stats for heatmap/history use.
+type DailyEntry struct {
+	Date         string `json:"date"`
+	FilesChanged int    `json:"files_changed"`
+	LinesAdded   int    `json:"lines_added"`
+	LinesDeleted int    `json:"lines_deleted"`
+	Commits      int    `json:"commits"`
 }
 
 // QueryTimeout is the maximum time allowed for a single git log query.
@@ -268,6 +278,160 @@ func isHex(s string) bool {
 		}
 	}
 	return true
+}
+
+// RecentCommit holds information about the most recent commit.
+type RecentCommit struct {
+	Time    string `json:"time"`
+	Message string `json:"message"`
+	Author  string `json:"author"`
+	Repo    string `json:"repo"`
+	Branch  string `json:"branch"`
+}
+
+// GetRecentCommit queries the most recent commit across all repositories.
+func GetRecentCommit(repoPaths []string, filterAuthor string) (*RecentCommit, error) {
+	var best *RecentCommit
+
+	for _, repoPath := range repoPaths {
+		args := []string{
+			"log", "-1",
+			"--pretty=format:%H%n%an%n%at%n%s%n%D",
+		}
+		if filterAuthor != "" {
+			args = append(args, "--author="+filterAuthor)
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), QueryTimeout)
+		cmd := exec.CommandContext(ctx, "git", args...)
+		cmd.Dir = repoPath
+		out, err := cmd.Output()
+		cancel()
+		if err != nil {
+			continue
+		}
+
+		lines := strings.Split(string(out), "\n")
+		if len(lines) < 4 {
+			continue
+		}
+
+		ts, _ := strconv.ParseInt(lines[2], 10, 64)
+		if ts == 0 {
+			continue
+		}
+
+		branch := ""
+		if len(lines) >= 5 {
+			branch = extractBranch(lines[4])
+		}
+
+		commitTime := time.Unix(ts, 0)
+		if best == nil || commitTime.After(time.Unix(parseTimestamp(best.Time), 0)) {
+			best = &RecentCommit{
+				Time:    commitTime.Format("2006-01-02 15:04:05"),
+				Author:  lines[1],
+				Message: lines[3],
+				Repo:    repoPath,
+				Branch:  branch,
+			}
+		}
+	}
+
+	return best, nil
+}
+
+func extractBranch(refString string) string {
+	if strings.Contains(refString, "HEAD -> ") {
+		parts := strings.Split(refString, "HEAD -> ")
+		if len(parts) > 1 {
+			b := strings.Split(parts[1], ",")[0]
+			return strings.TrimSpace(b)
+		}
+	}
+	return ""
+}
+
+func parseTimestamp(s string) int64 {
+	t, _ := time.Parse("2006-01-02 15:04:05", s)
+	return t.Unix()
+}
+
+// QueryStatsRange queries daily stats for a range of dates and returns per-day aggregates.
+func QueryStatsRange(repoPath, startDate, endDate, author string) ([]DailyEntry, error) {
+	if err := ValidateDate(startDate); err != nil {
+		return nil, err
+	}
+	if err := ValidateDate(endDate); err != nil {
+		return nil, err
+	}
+	if err := ValidateAuthor(author); err != nil {
+		return nil, err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+
+	args := []string{
+		"log",
+		"--after=" + startDate + " 00:00:00",
+		"--before=" + endDate + " 23:59:59",
+		"--pretty=format:%ad",
+		"--date=short",
+		"--shortstat",
+	}
+	if author != "" {
+		args = append(args, "--author="+author)
+	}
+
+	//nolint:gosec
+	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd.Dir = repoPath
+	out, err := cmd.Output()
+	if err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			return nil, fmt.Errorf("query timed out")
+		}
+		return nil, err
+	}
+
+	agg := make(map[string]*DailyEntry)
+	lines := strings.Split(string(out), "\n")
+	var currentDate string
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if datePattern.MatchString(line) {
+			currentDate = line
+			if _, ok := agg[currentDate]; !ok {
+				agg[currentDate] = &DailyEntry{Date: currentDate}
+			}
+			agg[currentDate].Commits++
+			continue
+		}
+		if currentDate != "" {
+			files, added, deleted := parseStatLine(line)
+			agg[currentDate].FilesChanged += files
+			agg[currentDate].LinesAdded += added
+			agg[currentDate].LinesDeleted += deleted
+		}
+	}
+
+	if len(agg) == 0 {
+		return nil, nil
+	}
+
+	entries := make([]DailyEntry, 0, len(agg))
+	for _, e := range agg {
+		entries = append(entries, *e)
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].Date < entries[j].Date
+	})
+
+	return entries, nil
 }
 
 func GetTodayDate() string {

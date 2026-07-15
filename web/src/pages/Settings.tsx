@@ -1,18 +1,26 @@
 import { useState, useEffect, useRef } from 'react'
 import { getConfig, updateConfig, updateScanRoots, triggerScan } from '../api/client'
+import { applyTheme, getStoredTheme, storeTheme, type ThemeMode } from '../utils/theme'
 
 interface ConfigData {
   config: Record<string, string>
   scan_roots: string[]
 }
 
-type TabKey = 'scan' | 'standards' | 'authors' | 'actions'
+type TabKey = 'scan' | 'standards' | 'authors' | 'appearance' | 'actions'
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'scan', label: '扫描目录' },
   { key: 'standards', label: '代码标准' },
   { key: 'authors', label: '作者配置' },
+  { key: 'appearance', label: '外观' },
   { key: 'actions', label: '操作' },
+]
+
+const THEME_OPTIONS: { value: ThemeMode; label: string; description: string }[] = [
+  { value: 'light', label: '浅色', description: '始终使用浅色主题' },
+  { value: 'dark', label: '深色', description: '始终使用深色主题' },
+  { value: 'system', label: '跟随系统', description: '自动匹配系统外观设置' },
 ]
 
 function Settings() {
@@ -23,6 +31,7 @@ function Settings() {
   const [codeStandard, setCodeStandard] = useState('500')
   const [scanDepth, setScanDepth] = useState('5')
   const [authorName, setAuthorName] = useState('')
+  const [themeMode, setThemeMode] = useState<ThemeMode>('system')
   const [message, setMessage] = useState('')
   const [tab, setTab] = useState<TabKey>('scan')
   const timerRef = useRef<ReturnType<typeof setTimeout>>()
@@ -34,6 +43,7 @@ function Settings() {
   }
 
   useEffect(() => {
+    setThemeMode(getStoredTheme())
     getConfig()
       .then((d) => {
         setData(d)
@@ -131,6 +141,13 @@ function Settings() {
     } finally {
       setSaving(false)
     }
+  }
+
+  const handleThemeChange = (mode: ThemeMode) => {
+    setThemeMode(mode)
+    storeTheme(mode)
+    applyTheme(mode)
+    showMessage('外观已更新')
   }
 
   if (loading) {
@@ -251,6 +268,28 @@ function Settings() {
           <button className="btn btn-primary" onClick={handleSaveAuthor} disabled={saving}>
             保存作者
           </button>
+        </div>
+      )}
+
+      {tab === 'appearance' && (
+        <div className="settings-section">
+          <h2>外观</h2>
+          <p className="section-desc">选择你喜欢的界面主题风格。</p>
+          <div className="theme-options">
+            {THEME_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                className={`theme-option ${themeMode === opt.value ? 'theme-option-active' : ''}`}
+                onClick={() => handleThemeChange(opt.value)}
+              >
+                <div className="theme-preview" data-preview={opt.value} />
+                <div className="theme-info">
+                  <span className="theme-label">{opt.label}</span>
+                  <span className="theme-desc">{opt.description}</span>
+                </div>
+              </button>
+            ))}
+          </div>
         </div>
       )}
 

@@ -88,6 +88,7 @@ type Project struct {
 	RootPath      string `json:"root_path"`
 	LevelOverride int    `json:"level_override"`
 	IsAutoGrouped bool   `json:"is_auto_grouped"`
+	IsStarred     bool   `json:"is_starred"`
 	CreatedAt     string `json:"created_at"`
 }
 
@@ -121,7 +122,7 @@ func UpsertProject(db *sql.DB, name, rootPath string, levelOverride int, isAutoG
 
 // GetAllProjects returns all projects.
 func GetAllProjects(db *sql.DB) ([]Project, error) {
-	rows, err := db.Query("SELECT id, name, root_path, level_override, is_auto_grouped, created_at FROM projects ORDER BY name")
+	rows, err := db.Query("SELECT id, name, root_path, level_override, is_auto_grouped, is_starred, created_at FROM projects ORDER BY name")
 	if err != nil {
 		return nil, err
 	}
@@ -132,11 +133,11 @@ func GetAllProjects(db *sql.DB) ([]Project, error) {
 // GetProjectByID returns a single project by ID.
 func GetProjectByID(db *sql.DB, id int64) (*Project, error) {
 	row := db.QueryRow(
-		"SELECT id, name, root_path, level_override, is_auto_grouped, created_at FROM projects WHERE id = ?",
+		"SELECT id, name, root_path, level_override, is_auto_grouped, is_starred, created_at FROM projects WHERE id = ?",
 		id,
 	)
 	p := &Project{}
-	err := row.Scan(&p.ID, &p.Name, &p.RootPath, &p.LevelOverride, &p.IsAutoGrouped, &p.CreatedAt)
+	err := row.Scan(&p.ID, &p.Name, &p.RootPath, &p.LevelOverride, &p.IsAutoGrouped, &p.IsStarred, &p.CreatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -158,11 +159,39 @@ func DeleteAllProjects(db *sql.DB) error {
 	return err
 }
 
+// ToggleProjectStar flips the starred status of a project.
+func ToggleProjectStar(db *sql.DB, id int64) (bool, error) {
+	res, err := db.Exec(
+		"UPDATE projects SET is_starred = NOT is_starred WHERE id = ?",
+		id,
+	)
+	if err != nil {
+		return false, err
+	}
+	rows, _ := res.RowsAffected()
+	if rows == 0 {
+		return false, fmt.Errorf("project not found: %d", id)
+	}
+	var newVal bool
+	err = db.QueryRow("SELECT is_starred FROM projects WHERE id = ?", id).Scan(&newVal)
+	return newVal, err
+}
+
+// GetStarredProjects returns only starred projects.
+func GetStarredProjects(db *sql.DB) ([]Project, error) {
+	rows, err := db.Query("SELECT id, name, root_path, level_override, is_auto_grouped, is_starred, created_at FROM projects WHERE is_starred = 1 ORDER BY name")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanProjects(rows)
+}
+
 func scanProjects(rows *sql.Rows) ([]Project, error) {
 	var projects []Project
 	for rows.Next() {
 		var p Project
-		if err := rows.Scan(&p.ID, &p.Name, &p.RootPath, &p.LevelOverride, &p.IsAutoGrouped, &p.CreatedAt); err != nil {
+		if err := rows.Scan(&p.ID, &p.Name, &p.RootPath, &p.LevelOverride, &p.IsAutoGrouped, &p.IsStarred, &p.CreatedAt); err != nil {
 			return nil, err
 		}
 		projects = append(projects, p)
@@ -547,6 +576,61 @@ func scanNotes(rows *sql.Rows) ([]Note, error) {
 		notes = append(notes, n)
 	}
 	return notes, rows.Err()
+}
+
+// -- Heatmap --
+
+// HeatmapDay represents a single day's contribution data.
+type HeatmapDay struct {
+	Date        string `json:"date"`
+	LinesAdded  int    `json:"lines_added"`
+	LinesDeleted int   `json:"lines_deleted"`
+	Commits     int    `json:"commits"`
+}
+
+// GetHeatmapData returns daily aggregated stats for the given date range and author.
+func GetHeatmapData(dbConn *sql.DB, startDate, endDate, author string) ([]HeatmapDay, error) {
+	query := `
+		SELECT stat_date, SUM(lines_added), SUM(lines_deleted), COUNT(*)
+		FROM daily_stats
+		WHERE stat_date >= ? AND stat_date <= ? AND author = ?
+		GROUP BY stat_date
+		ORDER BY stat_date
+	`
+	rows, err := dbConn.Query(query, startDate, endDate, author)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var days []HeatmapDay
+	for rows.Next() {
+		var d HeatmapDay
+		var commits int
+		if err := rows.Scan(&d.Date, &d.LinesAdded, &d.LinesDeleted, &commits); err != nil {
+			return nil, err
+		}
+		d.Commits = commits
+		days = append(days, d)
+	}
+	return days, rows.Err()
+}
+
+// HasStatsSince checks if we have daily stats for the given author going back
+// to at least the given date. Returns true if stats exist on or before startDate.
+func HasStatsSince(dbConn *sql.DB, startDate, author string) (bool, error) {
+	var earliest string
+	query := `
+		SELECT MIN(stat_date) FROM daily_stats WHERE author = ?
+	`
+	err := dbConn.QueryRow(query, author).Scan(&earliest)
+	if err != nil {
+		return false, err
+	}
+	if earliest == "" {
+		return false, nil
+	}
+	return earliest <= startDate, nil
 }
 
 // -- TodoCounts --

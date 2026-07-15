@@ -5,8 +5,10 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"gitboard/internal/db"
 	"gitboard/internal/grouper"
@@ -17,9 +19,11 @@ import (
 // App is the main application struct whose public methods are exposed to the
 // frontend via Wails Bind. The ctx is set during OnStartup.
 type App struct {
-	ctx     context.Context
-	db      *sql.DB
-	gitUser string
+	ctx        context.Context
+	db         *sql.DB
+	gitUser    string
+	scanning   bool
+	scanCancel context.CancelFunc
 }
 
 // NewApp creates a new App instance with dependencies injected.
@@ -33,10 +37,14 @@ func NewApp(database *sql.DB, gitUser string) *App {
 // startup is called at application startup.
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+	go a.ensureHistoryBackfilled()
 }
 
 // shutdown is called when the application exits.
 func (a *App) shutdown(ctx context.Context) {
+	if a.scanCancel != nil {
+		a.scanCancel()
+	}
 	if a.db != nil {
 		a.db.Close()
 	}
@@ -64,7 +72,7 @@ type ProjectResponse struct {
 }
 
 // GetProjects returns enriched project summaries, optionally filtered by date.
-func (a *App) GetProjects(date string) []ProjectResponse {
+func (a *App) GetProjects(date string, starredOnly bool) []ProjectResponse {
 	if date == "" {
 		date = stats.GetYesterdayDate()
 	}
@@ -73,7 +81,13 @@ func (a *App) GetProjects(date string) []ProjectResponse {
 		return nil
 	}
 
-	projects, err := db.GetAllProjects(a.db)
+	var projects []db.Project
+	var err error
+	if starredOnly {
+		projects, err = db.GetStarredProjects(a.db)
+	} else {
+		projects, err = db.GetAllProjects(a.db)
+	}
 	if err != nil {
 		log.Printf("get projects error: %v", err)
 		return nil
@@ -204,8 +218,44 @@ type ScanResult struct {
 	Projects   int  `json:"projects"`
 }
 
-// TriggerScan runs a full repository scan and re-groups projects.
+// ScanStatus holds the current scanning progress.
+type ScanStatus struct {
+	Running  bool   `json:"running"`
+	Message  string `json:"message"`
+	Progress int    `json:"progress"`
+	Total    int    `json:"total"`
+}
+
+// TriggerScan starts an async full repository scan and returns immediately.
 func (a *App) TriggerScan() (*ScanResult, error) {
+	if a.scanning {
+		return nil, fmt.Errorf("scan already in progress")
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	a.scanCancel = cancel
+	a.scanning = true
+
+	go func() {
+		defer func() {
+			a.scanning = false
+			a.scanCancel = nil
+		}()
+		a.runFullScan(ctx)
+	}()
+
+	return &ScanResult{Success: true}, nil
+}
+
+// GetScanStatus returns the current scan progress.
+func (a *App) GetScanStatus() *ScanStatus {
+	return &ScanStatus{
+		Running: a.scanning,
+	}
+}
+
+// runFullScan performs the actual scan + history backfill.
+func (a *App) runFullScan(ctx context.Context) {
 	depthStr, _ := db.GetConfig(a.db, "scan_depth")
 	maxDepth, _ := strconv.Atoi(depthStr)
 	if maxDepth <= 0 || maxDepth > 10 {
@@ -215,7 +265,8 @@ func (a *App) TriggerScan() (*ScanResult, error) {
 	roots, _ := db.GetScanRoots(a.db)
 	repos, err := scanner.ScanRepositories(roots, maxDepth)
 	if err != nil {
-		return nil, fmt.Errorf("scan failed")
+		log.Printf("scan error: %v", err)
+		return
 	}
 
 	groups := grouper.GroupRepositories(repos)
@@ -228,6 +279,11 @@ func (a *App) TriggerScan() (*ScanResult, error) {
 	}
 
 	for _, group := range groups {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
 		projectID, err := db.UpsertProject(a.db, group.Name, group.RootPath, 0, group.IsAutoGrouped)
 		if err != nil {
 			log.Printf("upsert project error: %v", err)
@@ -240,8 +296,77 @@ func (a *App) TriggerScan() (*ScanResult, error) {
 		}
 	}
 
-	a.refreshAllStats(stats.GetTodayDate())
-	return &ScanResult{Success: true, ReposFound: len(repos), Projects: len(groups)}, nil
+	a.refreshAllStatsWithCancel(ctx)
+	_ = db.SetConfig(a.db, "last_stats_backfill", stats.GetTodayDate())
+	log.Printf("scan complete: %d repos, %d projects", len(repos), len(groups))
+}
+
+// ensureHistoryBackfilled checks if we need to update stats, and backfills missing days.
+// Runs in background at startup. Uses config to track last backfill date to avoid repeating.
+func (a *App) ensureHistoryBackfilled() {
+	repos, err := db.GetAllRepositories(a.db)
+	if err != nil || len(repos) == 0 {
+		return
+	}
+
+	lastBackfillStr, _ := db.GetConfig(a.db, "last_stats_backfill")
+	lastBackfill, _ := time.Parse("2006-01-02", lastBackfillStr)
+
+	today := stats.GetTodayDate()
+	startDate := today
+
+	if lastBackfill.IsZero() {
+		startDate = time.Now().AddDate(0, 0, -365).Format("2006-01-02")
+	} else {
+		startDate = lastBackfill.AddDate(0, 0, 1).Format("2006-01-02")
+		if startDate > today {
+			return
+		}
+	}
+
+	log.Printf("backfilling stats from %s to %s...", startDate, today)
+	a.scanning = true
+	ctx, cancel := context.WithCancel(context.Background())
+	a.scanCancel = cancel
+
+	hasData := false
+	for _, repo := range repos {
+		select {
+		case <-ctx.Done():
+			log.Printf("stats refresh cancelled")
+			return
+		default:
+		}
+
+		allEntries, err := stats.QueryStatsRange(repo.Path, startDate, today, "")
+		if err == nil && allEntries != nil {
+			for _, e := range allEntries {
+				if e.FilesChanged > 0 || e.LinesAdded > 0 || e.LinesDeleted > 0 {
+					_ = db.UpsertDailyStat(a.db, repo.ID, e.Date, "all",
+						e.FilesChanged, e.LinesAdded, e.LinesDeleted)
+					hasData = true
+				}
+			}
+		}
+
+		if a.gitUser != "" {
+			myEntries, err := stats.QueryStatsRange(repo.Path, startDate, today, a.gitUser)
+			if err == nil && myEntries != nil {
+				for _, e := range myEntries {
+					if e.FilesChanged > 0 || e.LinesAdded > 0 || e.LinesDeleted > 0 {
+						_ = db.UpsertDailyStat(a.db, repo.ID, e.Date, a.gitUser,
+							e.FilesChanged, e.LinesAdded, e.LinesDeleted)
+						hasData = true
+					}
+				}
+			}
+		}
+	}
+
+	_ = db.SetConfig(a.db, "last_stats_backfill", today)
+	a.scanning = false
+	a.scanCancel = nil
+	log.Printf("stats backfill %s, has data: %v", today, hasData)
 }
 
 // ConfigData holds the application configuration sent to the frontend.
@@ -411,6 +536,59 @@ func (a *App) DeleteNote(noteID int64) error {
 	return db.DeleteNote(a.db, noteID)
 }
 
+// HeatmapResponse holds heatmap data for the frontend.
+type HeatmapResponse struct {
+	Days []db.HeatmapDay `json:"days"`
+}
+
+// GetHeatmapData returns daily commit stats for the past year.
+func (a *App) GetHeatmapData() *HeatmapResponse {
+	endDate := stats.GetTodayDate()
+	startDate := time.Now().AddDate(0, 0, -365).Format("2006-01-02")
+
+	days, err := db.GetHeatmapData(a.db, startDate, endDate, a.gitUser)
+	if err != nil {
+		log.Printf("get heatmap error: %v", err)
+		return &HeatmapResponse{Days: []db.HeatmapDay{}}
+	}
+	if days == nil {
+		days = []db.HeatmapDay{}
+	}
+	return &HeatmapResponse{Days: days}
+}
+
+// StatusBarData holds real-time status information.
+type StatusBarData struct {
+	CurrentTime      string `json:"current_time"`
+	LastCommitTime   string `json:"last_commit_time"`
+	LastCommitRepo   string `json:"last_commit_repo"`
+	LastCommitBranch string `json:"last_commit_branch"`
+	LastCommitMsg    string `json:"last_commit_msg"`
+}
+
+// GetStatusBar returns current status bar information.
+func (a *App) GetStatusBar() *StatusBarData {
+	repos, _ := db.GetAllRepositories(a.db)
+	repoPaths := make([]string, 0, len(repos))
+	for _, r := range repos {
+		repoPaths = append(repoPaths, r.Path)
+	}
+
+	data := &StatusBarData{
+		CurrentTime: time.Now().Format("2006-01-02 15:04:05"),
+	}
+
+	recent, err := stats.GetRecentCommit(repoPaths, a.gitUser)
+	if err == nil && recent != nil {
+		data.LastCommitTime = recent.Time
+		data.LastCommitRepo = filepath.Base(recent.Repo)
+		data.LastCommitBranch = recent.Branch
+		data.LastCommitMsg = recent.Message
+	}
+
+	return data
+}
+
 // -- Summary Bind method --
 
 // GetTodoCounts returns incomplete and total todo counts per project.
@@ -426,33 +604,48 @@ func (a *App) GetTodoCounts() []db.TodoCount {
 	return counts
 }
 
+// ToggleStar flips the starred status of a project.
+func (a *App) ToggleStar(projectID int64) (bool, error) {
+	return db.ToggleProjectStar(a.db, projectID)
+}
+
 // --- helpers (not exposed to frontend) ---
 
-func (a *App) refreshAllStats(date string) {
+func (a *App) refreshAllStatsWithCancel(ctx context.Context) {
 	repos, err := db.GetAllRepositories(a.db)
 	if err != nil {
 		return
 	}
+
+	startDate := time.Now().AddDate(0, 0, -365).Format("2006-01-02")
+	endDate := stats.GetTodayDate()
+
 	for _, repo := range repos {
-		allResult, err := stats.QueryStats(repo.Path, date, "")
-		if err != nil {
-			continue
+		select {
+		case <-ctx.Done():
+			log.Printf("stats refresh cancelled")
+			return
+		default:
 		}
-		if allResult.FilesChanged > 0 || allResult.LinesAdded > 0 || allResult.LinesDeleted > 0 {
-			if err := db.UpsertDailyStat(a.db, repo.ID, date, "all",
-				allResult.FilesChanged, allResult.LinesAdded, allResult.LinesDeleted); err != nil {
-				log.Printf("upsert daily stat error: %v", err)
+
+		allEntries, err := stats.QueryStatsRange(repo.Path, startDate, endDate, "")
+		if err == nil && allEntries != nil {
+			for _, e := range allEntries {
+				if e.FilesChanged > 0 || e.LinesAdded > 0 || e.LinesDeleted > 0 {
+					_ = db.UpsertDailyStat(a.db, repo.ID, e.Date, "all",
+						e.FilesChanged, e.LinesAdded, e.LinesDeleted)
+				}
 			}
 		}
+
 		if a.gitUser != "" {
-			myResult, err := stats.QueryStats(repo.Path, date, a.gitUser)
-			if err != nil {
-				continue
-			}
-			if myResult.FilesChanged > 0 || myResult.LinesAdded > 0 || myResult.LinesDeleted > 0 {
-				if err := db.UpsertDailyStat(a.db, repo.ID, date, a.gitUser,
-					myResult.FilesChanged, myResult.LinesAdded, myResult.LinesDeleted); err != nil {
-					log.Printf("upsert daily stat error: %v", err)
+			myEntries, err := stats.QueryStatsRange(repo.Path, startDate, endDate, a.gitUser)
+			if err == nil && myEntries != nil {
+				for _, e := range myEntries {
+					if e.FilesChanged > 0 || e.LinesAdded > 0 || e.LinesDeleted > 0 {
+						_ = db.UpsertDailyStat(a.db, repo.ID, e.Date, a.gitUser,
+							e.FilesChanged, e.LinesAdded, e.LinesDeleted)
+					}
 				}
 			}
 		}

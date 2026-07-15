@@ -1,6 +1,8 @@
-import { useState, useEffect, useMemo } from 'react'
-import { getProjects, getSummary, triggerScan, getTodoCounts, Project, Summary, TodoCount } from '../api/client'
+import { useState, useEffect, useRef, useMemo } from 'react'
+import { getProjects, getSummary, triggerScan, getTodoCounts, getScanStatus, toggleStar, Project, Summary, TodoCount } from '../api/client'
 import SummaryBar from '../components/SummaryBar'
+import Heatmap from '../components/Heatmap'
+import StatusBar from '../components/StatusBar'
 import DatePicker from '../components/DatePicker'
 import ProjectCard from '../components/ProjectCard'
 
@@ -29,13 +31,15 @@ function Dashboard() {
   const [sortKey, setSortKey] = useState<SortKey>('my_added')
   const [confirmScan, setConfirmScan] = useState(false)
   const [todoCounts, setTodoCounts] = useState<TodoCount[]>([])
+  const [showStarredOnly, setShowStarredOnly] = useState(true)
+  const pollTimer = useRef<number | null>(null)
 
-  const fetchData = async (selectedDate: string) => {
+  const fetchData = async (selectedDate: string, starredOnly = showStarredOnly) => {
     setLoading(true)
     setError('')
     try {
       const [projData, sumData, counts] = await Promise.all([
-        getProjects(selectedDate),
+        getProjects(selectedDate, starredOnly),
         getSummary(selectedDate),
         getTodoCounts(),
       ])
@@ -50,22 +54,72 @@ function Dashboard() {
     }
   }
 
+  const handleToggleStar = async (projectId: number) => {
+    try {
+      const newStarred = await toggleStar(projectId)
+      setProjects(prev => prev.map(p => p.id === projectId ? { ...p, is_starred: newStarred } : p))
+      if (showStarredOnly && !newStarred) {
+        setProjects(prev => prev.filter(p => p.id !== projectId))
+      }
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : '操作失败'
+      setError(msg)
+    }
+  }
+
   useEffect(() => {
     fetchData(date)
+    checkScanStatus()
+    return () => {
+      if (pollTimer.current) clearInterval(pollTimer.current)
+    }
   }, [date])
+
+  useEffect(() => {
+    fetchData(date, showStarredOnly)
+  }, [showStarredOnly])
+
+  const checkScanStatus = async () => {
+    try {
+      const status = await getScanStatus()
+      if (status.running) {
+        setScanning(true)
+        if (!pollTimer.current) {
+          pollTimer.current = window.setInterval(async () => {
+            const s = await getScanStatus()
+            if (!s.running) {
+              if (pollTimer.current) clearInterval(pollTimer.current)
+              pollTimer.current = null
+              setScanning(false)
+              fetchData(date)
+            }
+          }, 2000)
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }
 
   const handleScan = async () => {
     setConfirmScan(false)
-    setScanning(true)
     setError('')
     try {
       await triggerScan()
-      await fetchData(date)
+      setScanning(true)
+      if (pollTimer.current) clearInterval(pollTimer.current)
+      pollTimer.current = window.setInterval(async () => {
+        const s = await getScanStatus()
+        if (!s.running) {
+          if (pollTimer.current) clearInterval(pollTimer.current)
+          pollTimer.current = null
+          setScanning(false)
+          fetchData(date)
+        }
+      }, 2000)
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : '扫描失败'
       setError(msg)
-    } finally {
-      setScanning(false)
     }
   }
 
@@ -100,87 +154,120 @@ function Dashboard() {
 
   return (
     <div className="dashboard">
-      <SummaryBar summary={summary} globalTodoCount={globalTodoCount} />
+      <div className="dashboard-fixed">
+        <SummaryBar summary={summary} globalTodoCount={globalTodoCount} />
+        <Heatmap />
 
-      <div className="dashboard-controls">
-        <DatePicker value={date} onChange={setDate} />
-        <div className="dashboard-actions">
-          <div className="sort-control">
-            <label>排序：</label>
-            <select
-              value={sortKey}
-              onChange={(e) => setSortKey(e.target.value as SortKey)}
-              className="form-input sort-select"
-            >
-              {SORT_OPTIONS.map((opt) => (
-                <option key={opt.key} value={opt.key}>{opt.label}</option>
-              ))}
-            </select>
-          </div>
-          {confirmScan ? (
-            <div className="confirm-group">
-              <span className="confirm-text">确定重新扫描？</span>
-              <button className="btn btn-primary btn-sm" onClick={handleScan} disabled={scanning}>
-                确认
+        <div className="dashboard-controls">
+          <DatePicker value={date} onChange={setDate} />
+          <div className="dashboard-actions">
+            <div className="filter-toggle">
+              <button
+                className={`filter-btn ${!showStarredOnly ? 'active' : ''}`}
+                onClick={() => setShowStarredOnly(false)}
+              >
+                全部
               </button>
-              <button className="btn btn-sm" onClick={() => setConfirmScan(false)}>
-                取消
+              <button
+                className={`filter-btn ${showStarredOnly ? 'active' : ''}`}
+                onClick={() => setShowStarredOnly(true)}
+              >
+                关注
               </button>
             </div>
-          ) : (
-            <button className="btn btn-primary" onClick={() => setConfirmScan(true)} disabled={scanning}>
-              {scanning ? '扫描中...' : '重新扫描'}
-            </button>
-          )}
+            <div className="sort-control">
+              <label>排序：</label>
+              <select
+                value={sortKey}
+                onChange={(e) => setSortKey(e.target.value as SortKey)}
+                className="form-input sort-select"
+              >
+                {SORT_OPTIONS.map((opt) => (
+                  <option key={opt.key} value={opt.key}>{opt.label}</option>
+                ))}
+              </select>
+            </div>
+            {confirmScan ? (
+              <div className="confirm-group">
+                <span className="confirm-text">确定重新扫描？</span>
+                <button className="btn btn-primary btn-sm" onClick={handleScan} disabled={scanning}>
+                  确认
+                </button>
+                <button className="btn btn-sm" onClick={() => setConfirmScan(false)}>
+                  取消
+                </button>
+              </div>
+            ) : (
+              <button className="btn btn-primary" onClick={() => setConfirmScan(true)} disabled={scanning}>
+                {scanning ? '扫描中...' : '重新扫描'}
+              </button>
+            )}
+          </div>
         </div>
+
+        {error && (
+          <div className="error-banner">
+            <span>{error}</span>
+            <button className="btn btn-sm" onClick={() => fetchData(date)}>重试</button>
+          </div>
+        )}
       </div>
 
-      {error && (
-        <div className="error-banner">
-          <span>{error}</span>
-          <button className="btn btn-sm" onClick={() => fetchData(date)}>重试</button>
-        </div>
-      )}
-
-      {loading ? (
-        <div className="project-grid">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="project-card skeleton-card">
-              <div className="card-header">
-                <div className="skeleton skeleton-text" style={{width: '60%', height: 20}} />
+      <div className="dashboard-scroll">
+        {loading ? (
+          <div className="project-grid">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="project-card skeleton-card">
+                <div className="card-header">
+                  <div className="skeleton skeleton-text" style={{width: '60%', height: 20}} />
+                </div>
+                <div className="card-grid">
+                  {Array.from({ length: 4 }).map((_, j) => (
+                    <div key={j} className="card-stat">
+                      <div className="skeleton skeleton-text" style={{width: 32, height: 10}} />
+                      <div className="skeleton skeleton-text" style={{width: 40, height: 16}} />
+                    </div>
+                  ))}
+                </div>
               </div>
-              <div className="card-body">
-                {Array.from({ length: 5 }).map((_, j) => (
-                  <div key={j} className="stat-row">
-                    <div className="skeleton skeleton-text" style={{width: 48}} />
-                    <div className="skeleton skeleton-text" style={{width: 36}} />
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : sorted.length === 0 ? (
-        <div className="empty-state">
-          <div className="empty-icon">&#128269;</div>
-          <h3>暂无项目数据</h3>
-          <p>GitBoard 尚未扫描到任何 Git 仓库。请先配置扫描目录。</p>
-          <div className="empty-actions">
-            <button className="btn btn-primary" onClick={() => setConfirmScan(true)}>
-              开始扫描
-            </button>
-            <a href="/settings" className="btn btn-secondary">
-              配置目录
-            </a>
+            ))}
           </div>
-        </div>
-      ) : (
-        <div className="project-grid">
-          {sorted.map((p) => (
-            <ProjectCard key={p.id} project={p} date={date} todoCount={todoMap.get(p.id)} />
-          ))}
-        </div>
-      )}
+        ) : sorted.length === 0 ? (
+          <div className="empty-state">
+            <div className="empty-icon">{showStarredOnly ? '&#11088;' : '&#128269;'}</div>
+            <h3>{showStarredOnly ? '暂无关注项目' : '暂无项目数据'}</h3>
+            <p>
+              {showStarredOnly
+                ? '你还没有关注任何项目。点击项目卡片右上角的星标即可关注，或切换到「全部」查看所有项目。'
+                : 'GitBoard 尚未扫描到任何 Git 仓库。请先配置扫描目录。'}
+            </p>
+            <div className="empty-actions">
+              {showStarredOnly ? (
+                <button className="btn btn-primary" onClick={() => setShowStarredOnly(false)}>
+                  查看全部项目
+                </button>
+              ) : (
+                <>
+                  <button className="btn btn-primary" onClick={() => setConfirmScan(true)}>
+                    开始扫描
+                  </button>
+                  <a href="/#/settings" className="btn btn-secondary">
+                    配置目录
+                  </a>
+                </>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div className="project-grid">
+            {sorted.map((p) => (
+              <ProjectCard key={p.id} project={p} date={date} todoCount={todoMap.get(p.id)} onToggleStar={handleToggleStar} />
+            ))}
+          </div>
+        )}
+      </div>
+
+      <StatusBar />
     </div>
   )
 }

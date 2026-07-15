@@ -26,7 +26,7 @@ jobs:
             goos: linux
             goarch: amd64
           - target: darwin-amd64
-            runner: macos-13
+            runner: macos-latest
             goos: darwin
             goarch: amd64
           - target: darwin-arm64
@@ -45,7 +45,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version: '1.25'
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -63,8 +63,23 @@ jobs:
             librsvg2-dev \
             patchelf
 
-      - name: Install Wails CLI
-        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.13.0
+      - name: Generate app icons from SVG
+        shell: bash
+        run: |
+          if [ -f "build/icon.svg" ]; then
+            # Initialize a temp package.json in root so npm install works
+            if [ ! -f "package.json" ]; then
+              node -e "require('fs').writeFileSync('package.json', JSON.stringify({name:'gitboard-build',version:'0.0.0',private:true},null,2))"
+            fi
+            npm install --no-save sharp 2>&1 || true
+            if node scripts/generate-icons.mjs 2>&1; then
+              echo "Icons generated successfully"
+              ls -la build/icons/ || true
+              ls -la build/appicon.png || true
+            else
+              echo "Icon generation failed, continuing without custom icons"
+            fi
+          fi
 
       - name: Build Frontend
         run: |
@@ -73,9 +88,34 @@ jobs:
           npm run build
 
       - name: Build Wails app
+        shell: bash
         run: |
+          # Generate macOS .icns from PNG icons before build
+          if [ "${{ runner.os }}" = "macOS" ] && [ -d "build/icons" ]; then
+            mkdir -p build/icons/icon.iconset
+            cp build/icons/icon-512.png build/icons/icon.iconset/icon_512x512.png
+            cp build/icons/icon-256.png build/icons/icon.iconset/icon_256x256.png
+            cp build/icons/icon-128.png build/icons/icon.iconset/icon_128x128.png
+            cp build/icons/icon-64.png build/icons/icon.iconset/icon_32x32@2x.png
+            cp build/icons/icon-32.png build/icons/icon.iconset/icon_32x32.png
+            cp build/icons/icon-16.png build/icons/icon.iconset/icon_16x16.png
+            iconutil -c icns build/icons/icon.iconset -o build/icons/icon.icns
+            rm -rf build/icons/icon.iconset
+            echo "Generated icon.icns"
+          fi
+          
           export PATH=$PATH:$(go env GOPATH)/bin
-          wails build -platform ${{ matrix.goos }}/${{ matrix.goarch }} -clean
+          if [ "${{ runner.os }}" = "Linux" ]; then
+            go install github.com/wailsapp/wails/v2/cmd/wails@v2.13.0
+            wails build -platform ${{ matrix.goos }}/${{ matrix.goarch }} -clean -tags webkit2_41
+          elif [ "${{ runner.os }}" = "macOS" ] && [ "${{ matrix.goarch }}" = "amd64" ]; then
+            GOOS=darwin GOARCH=amd64 go install github.com/wailsapp/wails/v2/cmd/wails@v2.13.0
+            cp $(go env GOPATH)/bin/darwin_amd64/wails $(go env GOPATH)/bin/wails-amd64
+            arch -x86_64 $(go env GOPATH)/bin/wails-amd64 build -platform ${{ matrix.goos }}/${{ matrix.goarch }} -clean
+          else
+            go install github.com/wailsapp/wails/v2/cmd/wails@v2.13.0
+            wails build -platform ${{ matrix.goos }}/${{ matrix.goarch }} -clean
+          fi
 
       - name: Package Linux
         if: runner.os == 'Linux'
@@ -89,31 +129,59 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           mkdir -p release
-          # Wails produces .app bundle in build/bin/
           APP=$(ls -d build/bin/*.app 2>/dev/null | head -1)
           if [ -n "$APP" ]; then
-            # Create DMG
-            hdiutil create -volname GitBoard \
-              -srcfolder "$APP" \
-              -ov -format UDZO \
-              "release/gitboard-${{ matrix.target }}.dmg"
-          fi
-          # Also create tar.gz of the binary
-          BIN=$(ls build/bin/gitboard* 2>/dev/null | grep -v '\.app' | head -1)
-          if [ -n "$BIN" ]; then
-            tar -czf "release/gitboard-${{ matrix.target }}.tar.gz" -C build/bin "$(basename "$BIN")"
+            APP_NAME=$(basename "$APP")
+            APP_PATH="$APP"
+            
+            if [ -n "$APPLE_CERTIFICATE" ]; then
+              echo "Signing $APP_NAME..."
+              echo "$APPLE_CERTIFICATE" | base64 -d -o /tmp/cert.p12
+              security create-keychain -p "github-actions" /tmp/signing.keychain
+              security import /tmp/cert.p12 -k /tmp/signing.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+              security list-keychains -s /tmp/signing.keychain
+              security default-keychain -s /tmp/signing.keychain
+              security unlock-keychain -p "github-actions" /tmp/signing.keychain
+              codesign --deep --force --sign "$APPLE_TEAM_ID" --options runtime "$APP_PATH"
+              echo "Signed successfully"
+            fi
+            
+            STAGING=$(mktemp -d)
+            cp -R "$APP" "$STAGING/"
+            ln -s /Applications "$STAGING/Applications"
+            mkdir -p "$STAGING/.background"
+            sips -s format png "build/dmg-background.svg" --out "$STAGING/.background/background.png"
+            pip install create-dmg 2>/dev/null || brew install create-dmg 2>/dev/null || curl -sL https://github.com/create-dmg/create-dmg/archive/refs/tags/v1.0.0.tar.gz | tar -xz && cd create-dmg-1.0.0 && sudo make install && cd ..
+            create-dmg \
+              --volname "$APP_NAME" \
+              --window-size 600 400 \
+              --icon-size 80 \
+              --icon "$APP_NAME" 100 280 \
+              --hide-extension "$APP_NAME" \
+              --app-drop-link 400 280 \
+              --background "$STAGING/.background/background.png" \
+              --format UDZO \
+              "release/gitboard-${{ matrix.target }}.dmg" \
+              "$STAGING/"
+            rm -rf "$STAGING"
+            
+            if [ -n "$APPLE_CERTIFICATE" ] && [ -n "$APPLE_ID" ]; then
+              echo "Notarizing DMG..."
+              xcrun notarytool submit "release/gitboard-${{ matrix.target }}.dmg" --keychain-profile "github-actions" --wait 2>&1 || true
+              xcrun stapler staple "release/gitboard-${{ matrix.target }}.dmg" 2>&1 || true
+            fi
           fi
           echo "RELEASE_DIR=release" >> $GITHUB_ENV
 
       - name: Package Windows
         if: runner.os == 'Windows'
+        shell: bash
         run: |
-          mkdir release
-          if exist "build\bin\gitboard.exe" (
-            powershell Compress-Archive -Path "build\bin\gitboard.exe" -DestinationPath "release\gitboard-windows-amd64.zip"
-          )
-          echo "RELEASE_DIR=release" >> $env:GITHUB_ENV
-        shell: cmd
+          mkdir -p release
+          if [ -f "build/bin/gitboard.exe" ]; then
+            powershell Compress-Archive -Path "build/bin/gitboard.exe" -DestinationPath "release/gitboard-windows-amd64.zip"
+          fi
+          echo "RELEASE_DIR=release" >> "$GITHUB_ENV"
 
       - name: Upload release artifacts
         uses: actions/upload-artifact@v4
