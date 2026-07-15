@@ -8,6 +8,7 @@
 # Temporary files / 临时文件
 *.tmp
 *.swp
+*.bak
 
 # GitBoard binary
 gitboard
