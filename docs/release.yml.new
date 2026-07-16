@@ -1,0 +1,235 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.os }} (${{ matrix.arch }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            arch: amd64
+            target: linux-amd64
+          - os: macos-latest
+            arch: amd64
+            target: darwin-amd64
+          - os: macos-latest
+            arch: arm64
+            target: darwin-arm64
+          - os: windows-latest
+            arch: amd64
+            target: windows-amd64
+            extension: .exe
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build Frontend
+        run: |
+          cd web
+          npm ci
+          npm run build
+
+      - name: Build Go Binary
+        env:
+          GOOS: ${{ fromJson('{"ubuntu-latest":"linux","macos-latest":"darwin","windows-latest":"windows"}')[matrix.os] }}
+          GOARCH: ${{ matrix.arch }}
+        run: |
+          go build -ldflags="-s -w" -o gitboard${{ matrix.extension || '' }} .
+
+      - name: Create macOS App Bundle and DMG
+        if: startsWith(matrix.target, 'darwin')
+        shell: bash
+        run: |
+          set -e
+          VERSION="${{ github.ref_name }}"
+          APP_NAME="GitBoard"
+
+          # Generate .icns from PWA icon
+          mkdir -p "${APP_NAME}.iconset"
+          ICON_SRC="web/public/icon-512.png"
+          sips -z 16 16   "${ICON_SRC}" --out "${APP_NAME}.iconset/icon_16x16.png"
+          sips -z 32 32   "${ICON_SRC}" --out "${APP_NAME}.iconset/icon_16x16@2x.png"
+          sips -z 32 32   "${ICON_SRC}" --out "${APP_NAME}.iconset/icon_32x32.png"
+          sips -z 64 64   "${ICON_SRC}" --out "${APP_NAME}.iconset/icon_32x32@2x.png"
+          sips -z 128 128 "${ICON_SRC}" --out "${APP_NAME}.iconset/icon_128x128.png"
+          sips -z 256 256 "${ICON_SRC}" --out "${APP_NAME}.iconset/icon_128x128@2x.png"
+          sips -z 256 256 "${ICON_SRC}" --out "${APP_NAME}.iconset/icon_256x256.png"
+          sips -z 512 512 "${ICON_SRC}" --out "${APP_NAME}.iconset/icon_256x256@2x.png"
+          sips -z 512 512 "${ICON_SRC}" --out "${APP_NAME}.iconset/icon_512x512.png"
+          iconutil -c icns "${APP_NAME}.iconset" -o "${APP_NAME}.icns"
+          rm -rf "${APP_NAME}.iconset"
+
+          # Create .app bundle structure
+          mkdir -p "${APP_NAME}.app/Contents/MacOS"
+          mkdir -p "${APP_NAME}.app/Contents/Resources"
+          cp gitboard "${APP_NAME}.app/Contents/MacOS/gitboard"
+          chmod +x "${APP_NAME}.app/Contents/MacOS/gitboard"
+          cp "${APP_NAME}.icns" "${APP_NAME}.app/Contents/Resources/"
+
+          # Generate Info.plist (quoted heredoc + sed for version interpolation)
+          cat > "${APP_NAME}.app/Contents/Info.plist" <<'PLISTEOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>CFBundleExecutable</key>
+              <string>gitboard</string>
+              <key>CFBundleIdentifier</key>
+              <string>com.gitboard.app</string>
+              <key>CFBundleName</key>
+              <string>__APP_NAME__</string>
+              <key>CFBundleDisplayName</key>
+              <string>__APP_NAME__</string>
+              <key>CFBundleVersion</key>
+              <string>__VERSION__</string>
+              <key>CFBundleShortVersionString</key>
+              <string>__VERSION__</string>
+              <key>CFBundlePackageType</key>
+              <string>APPL</string>
+              <key>CFBundleInfoDictionaryVersion</key>
+              <string>6.0</string>
+              <key>LSMinimumSystemVersion</key>
+              <string>10.15</string>
+              <key>LSUIElement</key>
+              <true/>
+              <key>NSHighResolutionCapable</key>
+              <true/>
+              <key>CFBundleIconFile</key>
+              <string>__APP_NAME__</string>
+              <key>CFBundleIcons</key>
+              <dict>
+                  <key>CFBundlePrimaryIcon</key>
+                  <dict>
+                      <key>CFBundleIconName</key>
+                      <string>__APP_NAME__</string>
+                  </dict>
+              </dict>
+          </dict>
+          </plist>
+          PLISTEOF
+          sed -i '' "s/__VERSION__/${VERSION#v}/g; s/__APP_NAME__/${APP_NAME}/g" \
+            "${APP_NAME}.app/Contents/Info.plist"
+
+          # Stage DMG contents: .app + Applications shortcut for drag-install UX
+          STAGE_DIR="dmg-stage"
+          rm -rf "${STAGE_DIR}"
+          mkdir -p "${STAGE_DIR}"
+          cp -R "${APP_NAME}.app" "${STAGE_DIR}/"
+          ln -s /Applications "${STAGE_DIR}/Applications"
+
+          # Create DMG from staged directory
+          DMG_NAME="gitboard-${{ matrix.target }}.dmg"
+          hdiutil create -volname "${APP_NAME}" \
+            -srcfolder "${STAGE_DIR}" \
+            -ov -format UDZO \
+            "${DMG_NAME}"
+
+          # Attach volume icon to DMG so it shows GitBoard icon in Finder
+          MOUNT_OUT=$(hdiutil attach -readwrite -noverify -noautoopen "${DMG_NAME}" | tail -1)
+          MOUNT_DIR=$(echo "${MOUNT_OUT}" | awk '{print $3}')
+          if [ -d "${MOUNT_DIR}" ]; then
+            cp "${APP_NAME}.icns" "${MOUNT_DIR}/.VolumeIcon.icns"
+            SetFile -a C "${MOUNT_DIR}" 2>/dev/null || true
+            hdiutil detach "${MOUNT_DIR}" >/dev/null 2>&1 || true
+          fi
+
+          rm -rf "${STAGE_DIR}"
+
+          # Also create tarball for CLI users
+          tar -czf "gitboard-${{ matrix.target }}.tar.gz" gitboard
+
+          echo "Created:"
+          ls -lh "${DMG_NAME}" "gitboard-${{ matrix.target }}.tar.gz"
+
+      - name: Package Linux Binary
+        if: startsWith(matrix.target, 'linux')
+        shell: bash
+        run: |
+          tar -czf gitboard-${{ matrix.target }}.tar.gz gitboard
+
+      - name: Package Windows Binary
+        if: startsWith(matrix.target, 'windows')
+        shell: bash
+        run: |
+          powershell Compress-Archive -Path gitboard.exe -DestinationPath gitboard-${{ matrix.target }}.zip
+
+      - name: Upload Artifact (Linux/Windows)
+        if: ${{ !startsWith(matrix.target, 'darwin') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: gitboard-${{ matrix.target }}
+          path: gitboard-${{ matrix.target }}.${{ startsWith(matrix.target, 'linux') && 'tar.gz' || 'zip' }}
+
+      - name: Upload Artifact (macOS)
+        if: startsWith(matrix.target, 'darwin')
+        uses: actions/upload-artifact@v4
+        with:
+          name: gitboard-${{ matrix.target }}
+          path: |
+            gitboard-${{ matrix.target }}.tar.gz
+            gitboard-${{ matrix.target }}.dmg
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - name: Download Artifacts
+        uses: actions/download-artifact@v4
+
+      - name: Prepare Release Files
+        run: |
+          # Linux
+          mv gitboard-linux-amd64/gitboard-linux-amd64.tar.gz . && rm -rf gitboard-linux-amd64
+
+          # macOS Intel
+          mv gitboard-darwin-amd64/gitboard-darwin-amd64.tar.gz . || true
+          mv gitboard-darwin-amd64/gitboard-darwin-amd64.dmg . || true
+          rm -rf gitboard-darwin-amd64
+
+          # macOS ARM
+          mv gitboard-darwin-arm64/gitboard-darwin-arm64.tar.gz . || true
+          mv gitboard-darwin-arm64/gitboard-darwin-arm64.dmg . || true
+          rm -rf gitboard-darwin-arm64
+
+          # Windows
+          mv gitboard-windows-amd64/gitboard-windows-amd64.zip . && rm -rf gitboard-windows-amd64
+
+          echo "Release files:"
+          ls -lh gitboard-*
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            gitboard-linux-amd64.tar.gz
+            gitboard-darwin-amd64.tar.gz
+            gitboard-darwin-amd64.dmg
+            gitboard-darwin-arm64.tar.gz
+            gitboard-darwin-arm64.dmg
+            gitboard-windows-amd64.zip
+          generate_release_notes: true
