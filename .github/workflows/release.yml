@@ -127,10 +127,6 @@ jobs:
           tar -czf "release/gitboard-linux-amd64.tar.gz" gitboard
           echo "RELEASE_DIR=build/bin/release" >> $GITHUB_ENV
 
-      - name: Install Pillow for DMG background
-        if: runner.os == 'macOS'
-        run: pip3 install Pillow --quiet
-
       - name: Package macOS
         if: runner.os == 'macOS'
         run: |
