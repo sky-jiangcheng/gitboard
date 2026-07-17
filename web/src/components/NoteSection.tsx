@@ -143,7 +143,7 @@ function NoteSection({ projectId }: Props) {
 
       {/* Note list */}
       {filteredNotes.length === 0 && !isNew ? (
-        <p className="empty-hint">暂无{filter !== 'all' ? '匹配的' : ''}笔记</p>
+        <p className="empty-hint">{filter !== 'all' ? '暂无匹配的笔记' : '暂无笔记，点击上方按钮新建'}</p>
       ) : (
         <div className="note-list">
           {filteredNotes.map(note => (

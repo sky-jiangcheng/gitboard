@@ -86,7 +86,7 @@ function TodoSection({ projectId }: Props) {
       </div>
 
       {todos.length === 0 ? (
-        <p className="empty-state">暂无待办，点击添加</p>
+        <p className="empty-hint">暂无待办，输入内容按回车添加</p>
       ) : (
         <ul className="todo-list">
           {todos.map((todo, i) => (
