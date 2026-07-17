@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { marked } from 'marked'
+import DOMPurify from 'dompurify'
 import { listNotes, createNote, updateNote, deleteNote, Note } from '../api/client'
 
 interface Props {
@@ -53,7 +54,9 @@ function NoteSection({ projectId }: Props) {
   }
 
   const renderMarkdown = (content: string) => {
-    return { __html: marked.parse(content) as string }
+    const raw = marked.parse(content)
+    const html = typeof raw === 'string' ? raw : ''
+    return { __html: DOMPurify.sanitize(html) }
   }
 
   // Extract title from note content (first line, stripped of markdown)

@@ -3,6 +3,7 @@ package db
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -73,10 +74,28 @@ func AddScanRoot(db *sql.DB, path string) error {
 	return err
 }
 
-// RemoveScanRoot removes a scan root directory.
-func RemoveScanRoot(db *sql.DB, path string) error {
-	_, err := db.Exec("DELETE FROM scan_roots WHERE path = ?", path)
-	return err
+// ReplaceScanRoots atomically replaces all scan roots using a transaction.
+func ReplaceScanRoots(db *sql.DB, roots []string) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback() //nolint:errcheck
+
+	if _, err := tx.Exec("DELETE FROM scan_roots"); err != nil {
+		return fmt.Errorf("failed to clear scan roots: %w", err)
+	}
+
+	for _, root := range roots {
+		if root == "" || strings.Contains(root, "\x00") {
+			continue
+		}
+		if _, err := tx.Exec("INSERT OR IGNORE INTO scan_roots (path) VALUES (?)", root); err != nil {
+			return fmt.Errorf("failed to insert scan root: %w", err)
+		}
+	}
+
+	return tx.Commit()
 }
 
 // -- Projects --
@@ -678,6 +697,9 @@ type SearchNotesResult struct {
 
 // SearchNotes searches notes content across all projects.
 func SearchNotes(db *sql.DB, query string) ([]SearchNotesResult, error) {
+	if len(query) > 100 {
+		query = query[:100]
+	}
 	like := "%" + query + "%"
 	rows, err := db.Query(`
 		SELECT pn.id, pn.content, pn.project_id, p.name, pn.updated_at

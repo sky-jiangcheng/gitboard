@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"gitboard/internal/db"
@@ -22,6 +23,7 @@ type App struct {
 	ctx        context.Context
 	db         *sql.DB
 	gitUser    string
+	scanMu     sync.Mutex
 	scanning   bool
 	scanCancel context.CancelFunc
 }
@@ -228,20 +230,23 @@ type ScanStatus struct {
 
 // TriggerScan starts an async full repository scan and returns immediately.
 func (a *App) TriggerScan() (*ScanResult, error) {
+	a.scanMu.Lock()
 	if a.scanning {
+		a.scanMu.Unlock()
 		return nil, fmt.Errorf("scan already in progress")
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	a.scanCancel = cancel
 	a.scanning = true
+	a.scanMu.Unlock()
 
 	go func() {
-		defer func() {
-			a.scanning = false
-			a.scanCancel = nil
-		}()
 		a.runFullScan(ctx)
+		a.scanMu.Lock()
+		a.scanning = false
+		a.scanCancel = nil
+		a.scanMu.Unlock()
 	}()
 
 	return &ScanResult{Success: true}, nil
@@ -249,8 +254,11 @@ func (a *App) TriggerScan() (*ScanResult, error) {
 
 // GetScanStatus returns the current scan progress.
 func (a *App) GetScanStatus() *ScanStatus {
+	a.scanMu.Lock()
+	running := a.scanning
+	a.scanMu.Unlock()
 	return &ScanStatus{
-		Running: a.scanning,
+		Running: running,
 	}
 }
 
@@ -325,9 +333,11 @@ func (a *App) ensureHistoryBackfilled() {
 	}
 
 	log.Printf("backfilling stats from %s to %s...", startDate, today)
+	a.scanMu.Lock()
 	a.scanning = true
 	ctx, cancel := context.WithCancel(context.Background())
 	a.scanCancel = cancel
+	a.scanMu.Unlock()
 
 	hasData := false
 	for _, repo := range repos {
@@ -364,8 +374,10 @@ func (a *App) ensureHistoryBackfilled() {
 	}
 
 	_ = db.SetConfig(a.db, "last_stats_backfill", today)
+	a.scanMu.Lock()
 	a.scanning = false
 	a.scanCancel = nil
+	a.scanMu.Unlock()
 	log.Printf("stats backfill %s, has data: %v", today, hasData)
 }
 
@@ -400,20 +412,10 @@ func (a *App) UpdateConfig(key, value string) error {
 	return db.SetConfig(a.db, key, value)
 }
 
-// UpdateScanRoots replaces the entire scan root list.
+// UpdateScanRoots replaces the entire scan root list atomically.
 func (a *App) UpdateScanRoots(scanRoots []string) error {
-	existing, _ := db.GetScanRoots(a.db)
-	for _, root := range existing {
-		if err := db.RemoveScanRoot(a.db, root); err != nil {
-			log.Printf("remove scan root error: %v", err)
-		}
-	}
-	for _, root := range scanRoots {
-		if root != "" && !strings.Contains(root, "\x00") {
-			if err := db.AddScanRoot(a.db, root); err != nil {
-				log.Printf("add scan root error: %v", err)
-			}
-		}
+	if err := db.ReplaceScanRoots(a.db, scanRoots); err != nil {
+		return fmt.Errorf("failed to update scan roots: %w", err)
 	}
 	return nil
 }
