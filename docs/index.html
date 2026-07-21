@@ -25,6 +25,7 @@
     .badge-go { background: #00ADD8; color: #fff; }
     .badge-react { background: #61DAFB; color: #000; }
     .badge-sqlite { background: #003B57; color: #fff; }
+    .badge-version { background: #4a7d4a; color: #fff; }
     .cta { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-top: 24px; }
     .btn {
       display: inline-flex; align-items: center; gap: 8px;
@@ -74,8 +75,9 @@
 
   <header class="hero">
     <h1><span>Git</span>Board</h1>
-    <p>自动发现本地所有 Git 仓库，以可视化面板独立展示每个项目的每日提交量</p>
+    <p>自动发现本地 Git 仓库，可视化每日提交量；内置知识库、仓库知识挖掘与命令面板，把每个项目变成可检索的知识。</p>
     <div>
+      <span class="badge badge-version">v1.5.0</span>
       <span class="badge badge-go">Go</span>
       <span class="badge badge-react">React</span>
       <span class="badge badge-sqlite">SQLite</span>
@@ -92,32 +94,32 @@
       <div class="feature-card">
         <div class="icon">&#x1F50D;</div>
         <h3>自动发现仓库</h3>
-        <p>无需手动添加项目。设置扫描目录后自动递归发现所有 Git 仓库，支持 Windows/macOS/Linux 跨平台默认规则。</p>
+        <p>设置扫描根目录后递归发现所有 Git 仓库，平台自适应默认规则；智能分组识别 Monorepo 与单仓库，支持事务安全的拆分/合并。</p>
       </div>
       <div class="feature-card">
-        <div class="icon">&#x1F4CA;</div>
-        <h3>可视化面板</h3>
-        <p>每个项目独立卡片展示提交量（新增/删除/净增行数）。趋势折线图追踪每日代码产出变化。</p>
+        <div class="icon">&#x1F3AF;</div>
+        <h3>每日目标进度</h3>
+        <p>仪表盘首屏以进度环突出「今天达标了吗」。项目卡片展示新增/删除/净增、目标进度与达标状态，工作日未达标即时提醒。</p>
       </div>
       <div class="feature-card">
-        <div class="icon">&#x1F4E6;</div>
-        <h3>智能项目分组</h3>
-        <p>自动识别 Monorepo 与单仓库项目。支持手动调整项目目录级别，灵活控制展示粒度。</p>
+        <div class="icon">&#x1F4DA;</div>
+        <h3>知识库</h3>
+        <p>跨项目笔记中心：Markdown 笔记、标签、置顶、分类。全文搜索带排序与片段高亮，覆盖笔记与待办，⌘/Ctrl+K 命令面板秒达。</p>
+      </div>
+      <div class="feature-card">
+        <div class="icon">&#x26CF;&#xFE0F;</div>
+        <h3>仓库知识挖掘</h3>
+        <p>自动提取 README、检测技术栈与语言占比、最近提交流，结果缓存避免重复扫描，把仓库本身变成可浏览的知识。</p>
       </div>
       <div class="feature-card">
         <div class="icon">&#x1F4C5;</div>
-        <h3>工作日检查</h3>
-        <p>自动区分工作日与周末。设定每日代码量标准，未达标时面板给出提醒。</p>
+        <h3>提交热力图与趋势</h3>
+        <p>GitHub 风格的 52 周提交热力图，点击某天即筛选当日项目；趋势折线图追踪每日代码产出变化。</p>
       </div>
       <div class="feature-card">
         <div class="icon">&#x1F4BB;</div>
         <h3>跨平台单文件</h3>
-        <p>Go 编译为单个二进制文件，无需运行时依赖。双击启动，自动打开浏览器访问面板。</p>
-      </div>
-      <div class="feature-card">
-        <div class="icon">&#x1F4E6;</div>
-        <h3>PWA 可安装</h3>
-        <p>支持 PWA，启动后可安装到桌面或移动设备主屏幕，获得原生应用般的使用体验。</p>
+        <p>Wails + Go 编译为单个二进制，无运行时依赖；PWA 可安装到桌面/主屏幕。一键导入 Claude 记忆为知识笔记。</p>
       </div>
     </div>
   </section>
@@ -133,7 +135,7 @@
         <div class="os">&#x1F34E;</div>
         <h4>macOS</h4>
         <p style="color:#666;font-size:13px;margin-bottom:12px">Intel / Apple Silicon</p>
-        <p style="color:#999;font-size:12px">下载 <code style="background:#eee;padding:1px 4px;border-radius:4px">.dmg</code> 或 <code style="background:#eee;padding:1px 4px;border-radius:4px">.tar.gz</code></p>
+        <p style="color:#999;font-size:12px">下载 <code style="background:#eee;padding:1px 4px;border-radius:4px">.dmg</code>（Intel 或 Apple Silicon）</p>
       </div>
       <div class="download-card">
         <div class="os">&#x1F427;</div>
@@ -160,8 +162,6 @@
           <li>双击 .dmg 打开，将 GitBoard.app 拖入 Applications</li>
           <li>首次打开：右键点击 &gt; <strong>打开</strong>（绕过 Gatekeeper 未签名提示）</li>
         </ol>
-        <p style="color:#999;font-size:13px;margin-top:8px">或使用二进制：</p>
-        <code style="display:block;background:#000;padding:12px;border-radius:6px;font-size:13px;color:#4caf50">tar -xzf gitboard-darwin-*.tar.gz && ./gitboard</code>
       </div>
 
       <!-- Windows -->
@@ -183,28 +183,9 @@
         <code style="display:block;background:#000;padding:12px;border-radius:6px;font-size:13px;color:#4caf50">sudo mv gitboard /usr/local/bin/</code>
       </div>
 
-      <!-- Windows -->
-      <div style="background:#0d1117;border-radius:8px;padding:20px;margin-bottom:16px">
-        <h4 style="color:#4caf50;margin-bottom:12px">Windows</h4>
-        <ol style="color:#ccc;font-size:14px;padding-left:20px;line-height:2">
-          <li>从 Releases 下载 <code style="background:#333;padding:2px 6px;border-radius:4px;color:#4caf50">GitBoard_*_x64-setup.exe</code> 或 <code style="background:#333;padding:2px 6px;border-radius:4px;color:#4caf50">.msi</code></li>
-          <li>双击运行安装程序，按向导完成安装</li>
-          <li>Windows Defender 弹出警告时，点击 <strong>更多信息</strong> > <strong>仍要运行</strong></li>
-        </ol>
-      </div>
-
-      <!-- Linux -->
-      <div style="background:#0d1117;border-radius:8px;padding:20px;margin-bottom:16px">
-        <h4 style="color:#4caf50;margin-bottom:12px">Linux</h4>
-        <p style="color:#ccc;font-size:14px;margin-bottom:8px">AppImage（通用，推荐）：</p>
-        <code style="display:block;background:#000;padding:12px;border-radius:6px;font-size:13px;color:#4caf50">chmod +x GitBoard_*_amd64.AppImage && ./GitBoard_*_amd64.AppImage</code>
-        <p style="color:#ccc;font-size:14px;margin-bottom:8px;margin-top:12px">Debian/Ubuntu：</p>
-        <code style="display:block;background:#000;padding:12px;border-radius:6px;font-size:13px;color:#4caf50">sudo dpkg -i GitBoard_*_amd64.deb</code>
-      </div>
-
       <!-- 一键安装脚本 -->
       <div style="background:#0d1117;border-radius:8px;padding:20px">
-        <h4 style="color:#4caf50;margin-bottom:12px">一键安装（实验性）</h4>
+        <h4 style="color:#4a7d4a;margin-bottom:12px">一键安装（实验性）</h4>
         <p style="color:#ccc;font-size:14px;margin-bottom:8px">macOS / Linux：</p>
         <code style="display:block;background:#000;padding:12px;border-radius:6px;font-size:13px;color:#4caf50">curl -fsSL https://raw.githubusercontent.com/sky-jiangcheng/gitboard/master/scripts/install.sh | bash</code>
         <p style="color:#ccc;font-size:14px;margin-bottom:8px;margin-top:12px">Windows (PowerShell 管理员)：</p>
@@ -218,15 +199,19 @@
     <div class="features">
       <div class="feature-card">
         <h3>1. 启动应用</h3>
-        <p>下载后双击运行，GitBoard 将以原生窗口打开，无需浏览器。</p>
+        <p>下载后双击运行，GitBoard 以原生窗口打开，自动扫描并展示所有 Git 仓库。</p>
       </div>
       <div class="feature-card">
-        <h3>2. 配置扫描目录</h3>
-        <p>首次启动使用平台默认规则。前往设置页面添加或修改扫描根目录。</p>
+        <h3>2. 配置与达标</h3>
+        <p>设置扫描目录、每日代码量标准与 Git 作者。仪表盘首屏进度环即时反映今日目标达成情况。</p>
       </div>
       <div class="feature-card">
-        <h3>3. 查看统计</h3>
-        <p>仪表盘展示所有项目卡片。点击卡片进入详情页查看趋势图和子仓库明细。</p>
+        <h3>3. 挖掘项目知识</h3>
+        <p>进入项目详情查看自动提取的 README、技术栈、语言占比与最近提交；侧栏管理待办与笔记。</p>
+      </div>
+      <div class="feature-card">
+        <h3>4. 知识库与搜索</h3>
+        <p>「知识库」页跨项目浏览/筛选笔记；⌘/Ctrl+K 呼出命令面板，搜索笔记与待办并跳转项目。</p>
       </div>
     </div>
   </section>

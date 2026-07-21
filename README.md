@@ -11,7 +11,11 @@
 
 ![仪表盘首页](screenshots/dashboard.png)
 
+![知识库](screenshots/knowledge.png)
+
 ![项目详情](screenshots/project-detail.png)
+
+> 截图为示意渲染（由 `scripts/generate_screenshots.py` 生成），实际界面以应用为准。
 
 ## 功能特性
 
