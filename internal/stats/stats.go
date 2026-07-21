@@ -352,6 +352,72 @@ func extractBranch(refString string) string {
 	return ""
 }
 
+// GetRecentCommits returns the most recent commits across the given repositories,
+// merged and sorted by time descending, capped at limit. The author filter is
+// optional; an empty filter returns commits from all authors.
+func GetRecentCommits(repoPaths []string, filterAuthor string, limit int) ([]RecentCommit, error) {
+	if limit <= 0 {
+		limit = 10
+	}
+
+	var all []RecentCommit
+	// Field separator: NUL byte, which cannot appear inside git's text fields.
+	const sep = "\x00"
+
+	for _, repoPath := range repoPaths {
+		args := []string{
+			"log", "-" + strconv.Itoa(limit),
+			"--pretty=format:%H" + sep + "%an" + sep + "%at" + sep + "%s" + sep + "%D",
+		}
+		if filterAuthor != "" {
+			args = append(args, "--author="+filterAuthor)
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), QueryTimeout)
+		cmd := exec.CommandContext(ctx, "git", args...)
+		cmd.Dir = repoPath
+		out, err := cmd.Output()
+		cancel()
+		if err != nil {
+			continue
+		}
+
+		for _, line := range strings.Split(string(out), "\n") {
+			line = strings.TrimSpace(line)
+			if line == "" {
+				continue
+			}
+			parts := strings.SplitN(line, sep, 5)
+			if len(parts) < 4 {
+				continue
+			}
+			ts, _ := strconv.ParseInt(parts[2], 10, 64)
+			if ts == 0 {
+				continue
+			}
+			branch := ""
+			if len(parts) >= 5 {
+				branch = extractBranch(parts[4])
+			}
+			all = append(all, RecentCommit{
+				Time:    time.Unix(ts, 0).Format("2006-01-02 15:04:05"),
+				Author:  parts[1],
+				Message: parts[3],
+				Repo:    repoPath,
+				Branch:  branch,
+			})
+		}
+	}
+
+	sort.Slice(all, func(i, j int) bool {
+		return parseTimestamp(all[i].Time) > parseTimestamp(all[j].Time)
+	})
+	if len(all) > limit {
+		all = all[:limit]
+	}
+	return all, nil
+}
+
 func parseTimestamp(s string) int64 {
 	t, _ := time.Parse("2006-01-02 15:04:05", s)
 	return t.Unix()

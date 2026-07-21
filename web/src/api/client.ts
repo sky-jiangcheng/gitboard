@@ -77,12 +77,68 @@ export interface Todo {
   updated_at: string
 }
 
+export type NoteKind = 'knowledge' | 'log' | 'idea' | 'other'
+
 export interface Note {
   id: number
   project_id: number
+  title: string
   content: string
+  tags: string
+  kind: string
+  pinned: boolean
+  source: string
   sort_order: number
   created_at: string
+  updated_at: string
+}
+
+// A note joined with its parent project, for the global knowledge hub.
+export interface NoteWithProject extends Note {
+  project_name: string
+  root_path: string
+}
+
+export interface Tech {
+  name: string
+  category: string
+}
+
+export interface LanguageStat {
+  language: string
+  count: number
+}
+
+export interface RecentCommit {
+  time: string
+  message: string
+  author: string
+  repo: string
+  branch: string
+}
+
+export interface ProjectOverview {
+  readme_excerpt: string
+  tech_stack: Tech[]
+  languages: LanguageStat[]
+  recent_commits: RecentCommit[]
+  cached: boolean
+}
+
+export interface ImportResult {
+  synced: number
+  updated: number
+  skipped: number
+}
+
+export interface SearchHit {
+  type: 'note' | 'todo'
+  id: number
+  project_id: number
+  project_name: string
+  title: string
+  snippet: string
+  tags?: string
   updated_at: string
 }
 
@@ -95,14 +151,6 @@ export interface TodoCount {
 export interface NoteCount {
   project_id: number
   count: number
-}
-
-export interface SearchNotesResult {
-  note_id: number
-  content: string
-  project_id: number
-  project_name: string
-  updated_at: string
 }
 
 export interface HeatmapDay {
@@ -193,14 +241,16 @@ export function triggerScan(): Promise<{ success: boolean }> {
 
 export interface ScanStatus {
   running: boolean
+  backfilling: boolean
   message: string
   progress: number
   total: number
 }
 
 export function getScanStatus(): Promise<ScanStatus> {
-  if (isWails()) return wail<ScanStatus>('GetScanStatus').then(d => d ?? { running: false, message: '', progress: 0, total: 0 })
-  return http<ScanStatus>('/scan/status').then(d => d ?? { running: false, message: '', progress: 0, total: 0 })
+  const empty: ScanStatus = { running: false, backfilling: false, message: '', progress: 0, total: 0 }
+  if (isWails()) return wail<ScanStatus>('GetScanStatus').then(d => d ?? empty)
+  return http<ScanStatus>('/scan/status').then(d => d ?? empty)
 }
 
 export function getConfig(): Promise<AppConfig> {
@@ -289,6 +339,32 @@ export function createNote(projectId: number, content: string): Promise<Note> {
   })
 }
 
+export interface NoteCreateInput {
+  title?: string
+  tags?: string
+  kind?: string
+  source?: string
+}
+
+export function createNoteWithMeta(
+  projectId: number,
+  content: string,
+  meta: NoteCreateInput = {}
+): Promise<Note> {
+  const title = meta.title ?? ''
+  const tags = meta.tags ?? ''
+  const kind = meta.kind ?? ''
+  const source = meta.source ?? ''
+  if (isWails()) {
+    return wail<Note>('CreateNoteWithMeta', projectId, title, content, tags, kind, source)
+  }
+  return http<Note>('/notes', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ project_id: projectId, content, title, tags, kind, source }),
+  })
+}
+
 export function updateNote(noteId: number, content: string): Promise<void> {
   if (isWails()) return wail<void>('UpdateNote', noteId, content)
   return http<void>(`/notes/${noteId}`, {
@@ -298,9 +374,59 @@ export function updateNote(noteId: number, content: string): Promise<void> {
   })
 }
 
+export function updateNoteMeta(
+  noteId: number,
+  title: string,
+  tags: string,
+  kind: string,
+  pinned: boolean
+): Promise<void> {
+  if (isWails()) return wail<void>('UpdateNoteMeta', noteId, title, tags, kind, pinned)
+  return http<void>(`/notes/${noteId}/meta`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title, tags, kind, pinned }),
+  })
+}
+
+export function pinNote(noteId: number, pinned: boolean): Promise<void> {
+  if (isWails()) return wail<void>('PinNote', noteId, pinned)
+  return http<void>(`/notes/${noteId}/pin`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pinned }),
+  })
+}
+
 export function deleteNote(noteId: number): Promise<void> {
   if (isWails()) return wail<void>('DeleteNote', noteId)
   return http<void>(`/notes/${noteId}`, { method: 'DELETE' })
+}
+
+// --- Knowledge hub API ---
+
+export function listAllNotes(): Promise<NoteWithProject[]> {
+  if (isWails()) return wail<NoteWithProject[]>('ListAllNotes').then(d => d ?? [])
+  return http<NoteWithProject[]>('/notes/all').then(d => d ?? [])
+}
+
+export function listAllTags(): Promise<string[]> {
+  if (isWails()) return wail<string[]>('ListAllTags').then(d => d ?? [])
+  return http<string[]>('/notes/tags').then(d => d ?? [])
+}
+
+export function getProjectOverview(projectId: number): Promise<ProjectOverview> {
+  const empty: ProjectOverview = {
+    readme_excerpt: '', tech_stack: [], languages: [], recent_commits: [], cached: false,
+  }
+  if (isWails()) return wail<ProjectOverview>('GetProjectOverview', projectId).then(d => d ?? empty)
+  return http<ProjectOverview>(`/projects/${projectId}/overview`).then(d => d ?? empty)
+}
+
+export function importClaudeMemory(): Promise<ImportResult> {
+  const empty: ImportResult = { synced: 0, updated: 0, skipped: 0 }
+  if (isWails()) return wail<ImportResult>('ImportClaudeMemory').then(d => d ?? empty)
+  return http<ImportResult>('/knowledge/import', { method: 'POST' }).then(d => d ?? empty)
 }
 
 export function getTodoCounts(): Promise<TodoCount[]> {
@@ -318,9 +444,14 @@ export function getNoteCounts(): Promise<NoteCount[]> {
   return http<NoteCount[]>('/note-counts').then(d => d ?? [])
 }
 
-export function searchNotes(query: string): Promise<SearchNotesResult[]> {
-  if (isWails()) return wail<SearchNotesResult[]>('SearchNotes', query).then(d => d ?? [])
-  return http<SearchNotesResult[]>(`/notes/search?q=${encodeURIComponent(query)}`).then(d => d ?? [])
+export function searchNotes(query: string): Promise<SearchHit[]> {
+  if (isWails()) return wail<SearchHit[]>('SearchNotes', query).then(d => d ?? [])
+  return http<SearchHit[]>(`/notes/search?q=${encodeURIComponent(query)}`).then(d => d ?? [])
+}
+
+export function searchAll(query: string): Promise<SearchHit[]> {
+  if (isWails()) return wail<SearchHit[]>('SearchAll', query).then(d => d ?? [])
+  return http<SearchHit[]>(`/search?q=${encodeURIComponent(query)}`).then(d => d ?? [])
 }
 
 export function getStatusBar(): Promise<StatusBarData> {

@@ -3,6 +3,7 @@ package db
 import (
 	"database/sql"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 )
@@ -504,20 +505,72 @@ func scanTodos(rows *sql.Rows) ([]Todo, error) {
 
 // -- Notes --
 
+// NoteKindKnowledge marks notes that read like structured knowledge (headings or frontmatter).
+const NoteKindKnowledge = "knowledge"
+
 // Note represents a project note.
 type Note struct {
 	ID        int64  `json:"id"`
 	ProjectID int64  `json:"project_id"`
+	Title     string `json:"title"`
 	Content   string `json:"content"`
+	Tags      string `json:"tags"`
+	Kind      string `json:"kind"`
+	Pinned    bool   `json:"pinned"`
+	Source    string `json:"source"`
 	SortOrder int    `json:"sort_order"`
 	CreatedAt string `json:"created_at"`
 	UpdatedAt string `json:"updated_at"`
 }
 
-// ListNotes returns all notes for a project, ordered by sort_order.
+// NoteWithProject is a note joined with its parent project, for the global knowledge hub.
+type NoteWithProject struct {
+	ID          int64  `json:"id"`
+	ProjectID   int64  `json:"project_id"`
+	Title       string `json:"title"`
+	Content     string `json:"content"`
+	Tags        string `json:"tags"`
+	Kind        string `json:"kind"`
+	Pinned      bool   `json:"pinned"`
+	Source      string `json:"source"`
+	SortOrder   int    `json:"sort_order"`
+	CreatedAt   string `json:"created_at"`
+	UpdatedAt   string `json:"updated_at"`
+	ProjectName string `json:"project_name"`
+	RootPath    string `json:"root_path"`
+}
+
+// noteColumns is the canonical SELECT list for project_notes, kept in sync with scanNote.
+const noteColumns = `id, project_id, title, content, tags, kind, pinned, source, sort_order, created_at, updated_at`
+
+// InferNoteMeta derives a default title and kind from note content.
+// - kind is "knowledge" when the content starts with a Markdown heading or YAML frontmatter.
+// - title is the first non-empty line, stripped of leading # markers and bold markers.
+func InferNoteMeta(content string) (title, kind string) {
+	kind = "other"
+	if strings.HasPrefix(content, "---") || strings.HasPrefix(content, "# ") || strings.HasPrefix(content, "## ") {
+		kind = NoteKindKnowledge
+	}
+	for _, line := range strings.Split(content, "\n") {
+		t := strings.TrimSpace(line)
+		if t == "" || t == "---" {
+			continue
+		}
+		t = strings.TrimLeft(t, "#")
+		t = strings.TrimSpace(t)
+		t = strings.TrimPrefix(t, "**")
+		t = strings.TrimSuffix(t, "**")
+		if t != "" {
+			return t, kind
+		}
+	}
+	return "笔记", kind
+}
+
+// ListNotes returns all notes for a project, pinned first then by updated_at desc.
 func ListNotes(db *sql.DB, projectID int64) ([]Note, error) {
 	rows, err := db.Query(
-		"SELECT id, project_id, content, sort_order, created_at, updated_at FROM project_notes WHERE project_id = ? ORDER BY sort_order",
+		`SELECT `+noteColumns+` FROM project_notes WHERE project_id = ? ORDER BY pinned DESC, updated_at DESC`,
 		projectID,
 	)
 	if err != nil {
@@ -527,8 +580,84 @@ func ListNotes(db *sql.DB, projectID int64) ([]Note, error) {
 	return scanNotes(rows)
 }
 
-// CreateNote inserts a new note and returns the created record.
+// ListAllNotes returns every note across all projects, joined with project info,
+// ordered pinned first then by most recently updated. Used by the global knowledge hub.
+func ListAllNotes(db *sql.DB) ([]NoteWithProject, error) {
+	rows, err := db.Query(
+		`SELECT pn.` + noteColumns + `, p.name, p.root_path
+		 FROM project_notes pn
+		 JOIN projects p ON pn.project_id = p.id
+		 ORDER BY pn.pinned DESC, pn.updated_at DESC`,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var notes []NoteWithProject
+	for rows.Next() {
+		var n NoteWithProject
+		if err := rows.Scan(
+			&n.ID, &n.ProjectID, &n.Title, &n.Content, &n.Tags, &n.Kind, &n.Pinned, &n.Source,
+			&n.SortOrder, &n.CreatedAt, &n.UpdatedAt, &n.ProjectName, &n.RootPath,
+		); err != nil {
+			return nil, err
+		}
+		notes = append(notes, n)
+	}
+	return notes, rows.Err()
+}
+
+// GetNote returns a single note by ID.
+func GetNote(db *sql.DB, noteID int64) (*Note, error) {
+	row := db.QueryRow(`SELECT `+noteColumns+` FROM project_notes WHERE id = ?`, noteID)
+	n := &Note{}
+	err := row.Scan(&n.ID, &n.ProjectID, &n.Title, &n.Content, &n.Tags, &n.Kind, &n.Pinned, &n.Source, &n.SortOrder, &n.CreatedAt, &n.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return n, nil
+}
+
+// GetNoteBySourceTitle finds a note for a project with the given source+title,
+// used to make knowledge imports idempotent. Returns nil when no match exists.
+func GetNoteBySourceTitle(db *sql.DB, projectID int64, source, title string) (*Note, error) {
+	row := db.QueryRow(
+		`SELECT `+noteColumns+` FROM project_notes WHERE project_id = ? AND source = ? AND title = ? LIMIT 1`,
+		projectID, source, title,
+	)
+	n := &Note{}
+	err := row.Scan(&n.ID, &n.ProjectID, &n.Title, &n.Content, &n.Tags, &n.Kind, &n.Pinned, &n.Source, &n.SortOrder, &n.CreatedAt, &n.UpdatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return n, nil
+}
+
+// CreateNote inserts a new note (legacy signature: title/kind inferred from content).
 func CreateNote(db *sql.DB, projectID int64, content string) (*Note, error) {
+	title, kind := InferNoteMeta(content)
+	return createNote(db, projectID, title, content, "", kind, "manual")
+}
+
+// CreateNoteEx inserts a new note with explicit metadata.
+func CreateNoteEx(db *sql.DB, projectID int64, title, content, tags, kind, source string) (*Note, error) {
+	if title == "" {
+		title, kind = InferNoteMeta(content)
+	}
+	if kind == "" {
+		kind = "other"
+	}
+	if source == "" {
+		source = "manual"
+	}
+	return createNote(db, projectID, title, content, tags, kind, source)
+}
+
+func createNote(db *sql.DB, projectID int64, title, content, tags, kind, source string) (*Note, error) {
 	var maxSort int
 	err := db.QueryRow(
 		"SELECT COALESCE(MAX(sort_order), -1) FROM project_notes WHERE project_id = ?",
@@ -540,8 +669,8 @@ func CreateNote(db *sql.DB, projectID int64, content string) (*Note, error) {
 
 	now := time.Now().Format("2006-01-02 15:04:05")
 	res, err := db.Exec(
-		"INSERT INTO project_notes (project_id, content, sort_order, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
-		projectID, content, maxSort+1, now, now,
+		"INSERT INTO project_notes (project_id, title, content, tags, kind, source, sort_order, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+		projectID, title, content, tags, kind, source, maxSort+1, now, now,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create note: %w", err)
@@ -555,22 +684,60 @@ func CreateNote(db *sql.DB, projectID int64, content string) (*Note, error) {
 	return &Note{
 		ID:        noteID,
 		ProjectID: projectID,
+		Title:     title,
 		Content:   content,
+		Tags:      tags,
+		Kind:      kind,
+		Source:    source,
 		SortOrder: maxSort + 1,
 		CreatedAt: now,
 		UpdatedAt: now,
 	}, nil
 }
 
-// UpdateNote updates the content and updated_at of a note.
+// UpdateNote updates the content of a note and refreshes the inferred title/kind.
 func UpdateNote(db *sql.DB, noteID int64, content string) error {
+	title, kind := InferNoteMeta(content)
 	now := time.Now().Format("2006-01-02 15:04:05")
 	res, err := db.Exec(
-		"UPDATE project_notes SET content = ?, updated_at = ? WHERE id = ?",
-		content, now, noteID,
+		"UPDATE project_notes SET content = ?, title = ?, kind = ?, updated_at = ? WHERE id = ?",
+		content, title, kind, now, noteID,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to update note: %w", err)
+	}
+	rows, _ := res.RowsAffected()
+	if rows == 0 {
+		return fmt.Errorf("note not found: %d", noteID)
+	}
+	return nil
+}
+
+// UpdateNoteMeta updates editable metadata for a note (title/tags/kind/pinned).
+func UpdateNoteMeta(db *sql.DB, noteID int64, title, tags, kind string, pinned bool) error {
+	if kind == "" {
+		kind = "other"
+	}
+	now := time.Now().Format("2006-01-02 15:04:05")
+	res, err := db.Exec(
+		"UPDATE project_notes SET title = ?, tags = ?, kind = ?, pinned = ?, updated_at = ? WHERE id = ?",
+		title, tags, kind, pinned, now, noteID,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to update note meta: %w", err)
+	}
+	rows, _ := res.RowsAffected()
+	if rows == 0 {
+		return fmt.Errorf("note not found: %d", noteID)
+	}
+	return nil
+}
+
+// PinNote sets the pinned flag on a note.
+func PinNote(db *sql.DB, noteID int64, pinned bool) error {
+	res, err := db.Exec("UPDATE project_notes SET pinned = ? WHERE id = ?", pinned, noteID)
+	if err != nil {
+		return err
 	}
 	rows, _ := res.RowsAffected()
 	if rows == 0 {
@@ -585,11 +752,39 @@ func DeleteNote(db *sql.DB, noteID int64) error {
 	return err
 }
 
+// ListAllTags returns the distinct set of tags used across all notes.
+// Tags are stored as a comma-separated string; this splits and dedupes them.
+func ListAllTags(db *sql.DB) ([]string, error) {
+	rows, err := db.Query("SELECT DISTINCT tags FROM project_notes WHERE tags != ''")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	seen := make(map[string]bool)
+	var tags []string
+	for rows.Next() {
+		var raw string
+		if err := rows.Scan(&raw); err != nil {
+			return nil, err
+		}
+		for _, t := range strings.Split(raw, ",") {
+			t = strings.TrimSpace(t)
+			if t == "" || seen[t] {
+				continue
+			}
+			seen[t] = true
+			tags = append(tags, t)
+		}
+	}
+	return tags, rows.Err()
+}
+
 func scanNotes(rows *sql.Rows) ([]Note, error) {
 	var notes []Note
 	for rows.Next() {
 		var n Note
-		if err := rows.Scan(&n.ID, &n.ProjectID, &n.Content, &n.SortOrder, &n.CreatedAt, &n.UpdatedAt); err != nil {
+		if err := rows.Scan(&n.ID, &n.ProjectID, &n.Title, &n.Content, &n.Tags, &n.Kind, &n.Pinned, &n.Source, &n.SortOrder, &n.CreatedAt, &n.UpdatedAt); err != nil {
 			return nil, err
 		}
 		notes = append(notes, n)
@@ -686,43 +881,215 @@ func GetNoteCounts(db *sql.DB) ([]NoteCount, error) {
 	return counts, rows.Err()
 }
 
-// SearchNotesResult holds a single note match from global search.
-type SearchNotesResult struct {
-	NoteID    int64  `json:"note_id"`
-	Content   string `json:"content"`
-	ProjectID int64  `json:"project_id"`
+// SearchHit is a unified search result across notes and todos.
+type SearchHit struct {
+	Type        string `json:"type"` // "note" | "todo"
+	ID          int64  `json:"id"`
+	ProjectID   int64  `json:"project_id"`
 	ProjectName string `json:"project_name"`
-	UpdatedAt string `json:"updated_at"`
+	Title       string `json:"title"`
+	Snippet     string `json:"snippet"`
+	Tags        string `json:"tags,omitempty"`
+	UpdatedAt   string `json:"updated_at"`
 }
 
-// SearchNotes searches notes content across all projects.
-func SearchNotes(db *sql.DB, query string) ([]SearchNotesResult, error) {
-	if len(query) > 100 {
-		query = query[:100]
+// searchMaxQuery caps the query length to bound work.
+const searchMaxQuery = 200
+
+// searchResultLimit caps the number of hits returned.
+const searchResultLimit = 30
+
+// searchSnippetWindow is the number of characters of context kept on each side of a match.
+const searchSnippetWindow = 60
+
+// SearchNotes searches note content/title/tags across all projects, returning
+// ranked hits with context snippets. Ranking rewards term frequency, title and
+// tag matches, and recency.
+func SearchNotes(db *sql.DB, query string) ([]SearchHit, error) {
+	return searchNotesLike(db, query, false)
+}
+
+// searchNotesLike runs the note search. When includeTodos is true the result is
+// merged with todo matches and de-duplicated by (type,id).
+func searchNotesLike(db *sql.DB, query string, includeTodos bool) ([]SearchHit, error) {
+	q := strings.TrimSpace(query)
+	if q == "" {
+		return nil, nil
 	}
-	like := "%" + query + "%"
+	if len(q) > searchMaxQuery {
+		q = q[:searchMaxQuery]
+	}
+	like := "%" + q + "%"
+
+	// Build candidate notes (LIKE on content, title, or tags).
 	rows, err := db.Query(`
-		SELECT pn.id, pn.content, pn.project_id, p.name, pn.updated_at
+		SELECT pn.id, pn.title, pn.content, pn.tags, pn.updated_at, pn.project_id, p.name
 		FROM project_notes pn
 		JOIN projects p ON pn.project_id = p.id
-		WHERE pn.content LIKE ?
-		ORDER BY pn.updated_at DESC
-		LIMIT 50
+		WHERE pn.content LIKE ? OR pn.title LIKE ? OR pn.tags LIKE ?
+	`, like, like, like)
+	if err != nil {
+		return nil, err
+	}
+
+	type noteCand struct {
+		SearchHit
+		score int
+	}
+	var cands []noteCand
+	for rows.Next() {
+		var c noteCand
+		if err := rows.Scan(&c.ID, &c.Title, &c.Snippet, &c.Tags, &c.UpdatedAt, &c.ProjectID, &c.ProjectName); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		// Snippet field temporarily holds full content; build the real snippet below.
+		content := c.Snippet
+		c.Snippet = makeSnippet(content, q)
+		c.Type = "note"
+		c.score = scoreNote(content, c.Title, c.Tags, c.UpdatedAt, q)
+		cands = append(cands, c)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, err
+	}
+	rows.Close()
+
+	if includeTodos {
+		todoHits, err := searchTodos(db, q)
+		if err != nil {
+			return nil, err
+		}
+		for _, th := range todoHits {
+			cands = append(cands, noteCand{SearchHit: th, score: 5 + countOccurrences(strings.ToLower(th.Title), strings.ToLower(q))})
+		}
+	}
+
+	sort.SliceStable(cands, func(i, j int) bool {
+		return cands[i].score > cands[j].score
+	})
+
+	hits := make([]SearchHit, 0, searchResultLimit)
+	for _, c := range cands {
+		if len(hits) >= searchResultLimit {
+			break
+		}
+		hits = append(hits, c.SearchHit)
+	}
+	return hits, nil
+}
+
+// SearchAll searches notes and todos together, returning ranked, unified hits.
+func SearchAll(db *sql.DB, query string) ([]SearchHit, error) {
+	return searchNotesLike(db, query, true)
+}
+
+// searchTodos matches todos by title.
+func searchTodos(db *sql.DB, q string) ([]SearchHit, error) {
+	like := "%" + q + "%"
+	rows, err := db.Query(`
+		SELECT t.id, t.title, t.updated_at, t.project_id, p.name
+		FROM project_todos t
+		JOIN projects p ON t.project_id = p.id
+		WHERE t.title LIKE ?
 	`, like)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	var results []SearchNotesResult
+	var hits []SearchHit
 	for rows.Next() {
-		var r SearchNotesResult
-		if err := rows.Scan(&r.NoteID, &r.Content, &r.ProjectID, &r.ProjectName, &r.UpdatedAt); err != nil {
+		var h SearchHit
+		if err := rows.Scan(&h.ID, &h.Title, &h.UpdatedAt, &h.ProjectID, &h.ProjectName); err != nil {
 			return nil, err
 		}
-		results = append(results, r)
+		h.Type = "todo"
+		h.Snippet = h.Title
+		hits = append(hits, h)
 	}
-	return results, rows.Err()
+	return hits, rows.Err()
+}
+
+// scoreNote computes a relevance score for a note match.
+func scoreNote(content, title, tags, updatedAt, query string) int {
+	lowQ := strings.ToLower(query)
+	score := countOccurrences(strings.ToLower(content), lowQ) * 2
+	if strings.Contains(strings.ToLower(title), lowQ) {
+		score += 6
+	}
+	if strings.Contains(strings.ToLower(tags), lowQ) {
+		score += 8
+	}
+	// Recency: up to +5 for notes updated in the last 30 days.
+	if t, err := time.Parse("2006-01-02 15:04:05", updatedAt); err == nil {
+		days := int(time.Since(t).Hours() / 24)
+		switch {
+		case days <= 1:
+			score += 5
+		case days <= 7:
+			score += 4
+		case days <= 30:
+			score += 2
+		}
+	}
+	return score
+}
+
+// countOccurrences counts non-overlapping case-folded occurrences of sub in s.
+func countOccurrences(s, sub string) int {
+	if sub == "" {
+		return 0
+	}
+	c := 0
+	for i := 0; i+len(sub) <= len(s); {
+		if s[i:i+len(sub)] == sub {
+			c++
+			if c >= 12 {
+				return c
+			}
+			i += len(sub)
+		} else {
+			i++
+		}
+	}
+	return c
+}
+
+// makeSnippet returns a window of content around the first match of query.
+func makeSnippet(content, query string) string {
+	if content == "" {
+		return ""
+	}
+	low := strings.ToLower(content)
+	idx := strings.Index(low, strings.ToLower(query))
+	const w = searchSnippetWindow
+	if idx < 0 {
+		// No exact substring (e.g. multi-word query); return the head.
+		if len(content) > w*2 {
+			return content[:w*2] + "…"
+		}
+		return content
+	}
+	start := idx - w
+	if start < 0 {
+		start = 0
+	}
+	end := idx + len(query) + w
+	if end > len(content) {
+		end = len(content)
+	}
+	snip := strings.ReplaceAll(content[start:end], "\n", " ")
+	prefix := ""
+	if start > 0 {
+		prefix = "…"
+	}
+	suffix := ""
+	if end < len(content) {
+		suffix = "…"
+	}
+	return prefix + snip + suffix
 }
 
 // -- TodoCounts --
@@ -759,4 +1126,48 @@ func GetTodoCounts(db *sql.DB) ([]TodoCount, error) {
 		counts = append(counts, c)
 	}
 	return counts, rows.Err()
+}
+
+// -- RepoMeta (knowledge mining cache) --
+
+// RepoMeta caches mined knowledge (tech stack, README excerpt, language breakdown)
+// for a repository so repeated dashboard loads do not re-scan the filesystem.
+type RepoMeta struct {
+	RepositoryID int64  `json:"repository_id"`
+	TechStack    string `json:"tech_stack"`    // JSON array of tech names
+	ReadmeExcerpt string `json:"readme_excerpt"`
+	Languages    string `json:"languages"`      // JSON map of language->file count
+	UpdatedAt    string `json:"updated_at"`
+}
+
+// GetRepoMeta returns cached meta for a repository, or nil if absent.
+func GetRepoMeta(db *sql.DB, repoID int64) (*RepoMeta, error) {
+	row := db.QueryRow(
+		"SELECT repository_id, tech_stack, readme_excerpt, languages, updated_at FROM repo_meta WHERE repository_id = ?",
+		repoID,
+	)
+	var m RepoMeta
+	err := row.Scan(&m.RepositoryID, &m.TechStack, &m.ReadmeExcerpt, &m.Languages, &m.UpdatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &m, nil
+}
+
+// UpsertRepoMeta stores mined knowledge for a repository, replacing any prior cache.
+func UpsertRepoMeta(db *sql.DB, repoID int64, techStack, readmeExcerpt, languages string) error {
+	_, err := db.Exec(
+		`INSERT INTO repo_meta (repository_id, tech_stack, readme_excerpt, languages, updated_at)
+		 VALUES (?, ?, ?, ?, ?)
+		 ON CONFLICT(repository_id) DO UPDATE SET
+		   tech_stack=excluded.tech_stack,
+		   readme_excerpt=excluded.readme_excerpt,
+		   languages=excluded.languages,
+		   updated_at=excluded.updated_at`,
+		repoID, techStack, readmeExcerpt, languages, time.Now().Format("2006-01-02 15:04:05"),
+	)
+	return err
 }

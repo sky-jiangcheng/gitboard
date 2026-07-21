@@ -1,6 +1,10 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { getProjects, getSummary, triggerScan, getTodoCounts, getNoteCounts, searchNotes, getScanStatus, toggleStar, Project, Summary, TodoCount, NoteCount, SearchNotesResult } from '../api/client'
+import {
+  getProjects, getSummary, triggerScan, getTodoCounts, getNoteCounts, searchAll,
+  getScanStatus, toggleStar, getConfig, Project, Summary, TodoCount, NoteCount, SearchHit,
+} from '../api/client'
 import SummaryBar from '../components/SummaryBar'
+import GoalRing from '../components/GoalRing'
 import Heatmap from '../components/Heatmap'
 import StatusBar from '../components/StatusBar'
 import DatePicker from '../components/DatePicker'
@@ -24,9 +28,11 @@ const SORT_OPTIONS: { key: SortKey; label: string }[] = [
 function Dashboard() {
   const [projects, setProjects] = useState<Project[]>([])
   const [summary, setSummary] = useState<Summary | null>(null)
+  const [dailyGoal, setDailyGoal] = useState(500)
   const [date, setDate] = useState(getYesterday())
   const [loading, setLoading] = useState(true)
   const [scanning, setScanning] = useState(false)
+  const [scanMsg, setScanMsg] = useState('')
   const [error, setError] = useState('')
   const [sortKey, setSortKey] = useState<SortKey>('my_added')
   const [confirmScan, setConfirmScan] = useState(false)
@@ -34,7 +40,7 @@ function Dashboard() {
   const [noteCounts, setNoteCounts] = useState<NoteCount[]>([])
   const [showStarredOnly, setShowStarredOnly] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
-  const [searchResults, setSearchResults] = useState<SearchNotesResult[] | null>(null)
+  const [searchResults, setSearchResults] = useState<SearchHit[] | null>(null)
   const [searching, setSearching] = useState(false)
   const pollTimer = useRef<number | null>(null)
   const searchRef = useRef<HTMLDivElement>(null)
@@ -54,10 +60,72 @@ function Dashboard() {
       setTodoCounts(counts)
       setNoteCounts(noteCountsData)
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : '加载失败'
-      setError(msg)
+      setError(e instanceof Error ? e.message : '加载失败')
     } finally {
       setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    getConfig()
+      .then(c => {
+        const v = parseInt(c.config.daily_code_standard || '500', 10)
+        if (!isNaN(v) && v > 0) setDailyGoal(v)
+      })
+      .catch(() => {})
+    fetchData(date)
+    checkScanStatus()
+    return () => { if (pollTimer.current) clearInterval(pollTimer.current) }
+  }, [date])
+
+  useEffect(() => { fetchData(date, showStarredOnly) }, [showStarredOnly])
+
+  const checkScanStatus = async () => {
+    try {
+      const status = await getScanStatus()
+      if (status.running || status.backfilling) {
+        setScanning(true)
+        setScanMsg(status.message)
+        if (!pollTimer.current) {
+          pollTimer.current = window.setInterval(async () => {
+            const s = await getScanStatus()
+            if (!s.running && !s.backfilling) {
+              if (pollTimer.current) clearInterval(pollTimer.current)
+              pollTimer.current = null
+              setScanning(false)
+              setScanMsg('')
+              fetchData(date)
+            } else {
+              setScanMsg(s.message)
+            }
+          }, 2000)
+        }
+      }
+    } catch { /* ignore */ }
+  }
+
+  const handleScan = async () => {
+    setConfirmScan(false)
+    setError('')
+    try {
+      await triggerScan()
+      setScanning(true)
+      setScanMsg('正在扫描仓库…')
+      if (pollTimer.current) clearInterval(pollTimer.current)
+      pollTimer.current = window.setInterval(async () => {
+        const s = await getScanStatus()
+        if (!s.running && !s.backfilling) {
+          if (pollTimer.current) clearInterval(pollTimer.current)
+          pollTimer.current = null
+          setScanning(false)
+          setScanMsg('')
+          fetchData(date)
+        } else {
+          setScanMsg(s.message)
+        }
+      }, 2000)
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : '扫描失败')
     }
   }
 
@@ -69,76 +137,16 @@ function Dashboard() {
         setProjects(prev => prev.filter(p => p.id !== projectId))
       }
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : '操作失败'
-      setError(msg)
-    }
-  }
-
-  useEffect(() => {
-    fetchData(date)
-    checkScanStatus()
-    return () => {
-      if (pollTimer.current) clearInterval(pollTimer.current)
-    }
-  }, [date])
-
-  useEffect(() => {
-    fetchData(date, showStarredOnly)
-  }, [showStarredOnly])
-
-  const checkScanStatus = async () => {
-    try {
-      const status = await getScanStatus()
-      if (status.running) {
-        setScanning(true)
-        if (!pollTimer.current) {
-          pollTimer.current = window.setInterval(async () => {
-            const s = await getScanStatus()
-            if (!s.running) {
-              if (pollTimer.current) clearInterval(pollTimer.current)
-              pollTimer.current = null
-              setScanning(false)
-              fetchData(date)
-            }
-          }, 2000)
-        }
-      }
-    } catch {
-      // ignore
-    }
-  }
-
-  const handleScan = async () => {
-    setConfirmScan(false)
-    setError('')
-    try {
-      await triggerScan()
-      setScanning(true)
-      if (pollTimer.current) clearInterval(pollTimer.current)
-      pollTimer.current = window.setInterval(async () => {
-        const s = await getScanStatus()
-        if (!s.running) {
-          if (pollTimer.current) clearInterval(pollTimer.current)
-          pollTimer.current = null
-          setScanning(false)
-          fetchData(date)
-        }
-      }, 2000)
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : '扫描失败'
-      setError(msg)
+      setError(e instanceof Error ? e.message : '操作失败')
     }
   }
 
   const handleSearch = async (query: string) => {
     setSearchQuery(query)
-    if (!query.trim()) {
-      setSearchResults(null)
-      return
-    }
+    if (!query.trim()) { setSearchResults(null); return }
     setSearching(true)
     try {
-      const results = await searchNotes(query)
+      const results = await searchAll(query)
       setSearchResults(results)
     } catch {
       setSearchResults([])
@@ -147,7 +155,6 @@ function Dashboard() {
     }
   }
 
-  // Close search on click outside
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
       if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
@@ -163,16 +170,11 @@ function Dashboard() {
     const list = [...projects]
     list.sort((a, b) => {
       switch (sortKey) {
-        case 'name':
-          return a.name.localeCompare(b.name)
-        case 'my_added':
-          return b.my_added - a.my_added
-        case 'my_files':
-          return b.my_files - a.my_files
-        case 'repo_count':
-          return b.repo_count - a.repo_count
-        default:
-          return 0
+        case 'name': return a.name.localeCompare(b.name)
+        case 'my_added': return b.my_added - a.my_added
+        case 'my_files': return b.my_files - a.my_files
+        case 'repo_count': return b.repo_count - a.repo_count
+        default: return 0
       }
     })
     return list
@@ -190,15 +192,41 @@ function Dashboard() {
     return map
   }, [noteCounts])
 
-  const globalTodoCount = useMemo(() => {
-    return todoCounts.reduce((sum, c) => sum + c.count, 0)
-  }, [todoCounts])
+  const globalTodoCount = useMemo(() => todoCounts.reduce((sum, c) => sum + c.count, 0), [todoCounts])
+
+  const myAdded = summary?.my_added ?? 0
+  const isWorkday = summary?.is_workday ?? false
 
   return (
     <div className="dashboard">
       <div className="dashboard-fixed">
-        <SummaryBar summary={summary} globalTodoCount={globalTodoCount} />
-        <Heatmap />
+        <div className="hero-row">
+          <div className="hero-card">
+            <GoalRing
+              value={myAdded}
+              goal={isWorkday ? dailyGoal : 0}
+              label={isWorkday ? '今日目标' : '非工作日'}
+              sublabel={isWorkday ? `${myAdded} / ${dailyGoal} 行` : `${myAdded} 行`}
+            />
+            <div className="hero-text">
+              <div className="hero-eyebrow">{date} · {isWorkday ? '工作日' : '周末'}</div>
+              <div className="hero-title">
+                {isWorkday
+                  ? (myAdded >= dailyGoal ? '今日目标已达成 🎉' : `还差 ${Math.max(dailyGoal - myAdded, 0)} 行达标`)
+                  : '周末愉快，无达标要求'}
+              </div>
+              <div className="hero-sub">
+                个人新增 <strong className="green">+{myAdded}</strong> ·
+                文件 <strong>{summary?.my_files ?? 0}</strong> ·
+                涉及 <strong>{summary?.repo_count ?? 0}</strong> 个仓库
+              </div>
+            </div>
+          </div>
+
+          <SummaryBar summary={summary} globalTodoCount={globalTodoCount} />
+        </div>
+
+        <Heatmap onDayClick={setDate} />
 
         <div className="dashboard-controls">
           <DatePicker value={date} onChange={setDate} />
@@ -208,7 +236,7 @@ function Dashboard() {
                 type="text"
                 value={searchQuery}
                 onChange={e => handleSearch(e.target.value)}
-                placeholder="搜索知识笔记..."
+                placeholder="搜索笔记与待办…"
                 className="form-input search-input"
               />
               {searchResults !== null && (
@@ -216,20 +244,16 @@ function Dashboard() {
                   {searching ? (
                     <div className="search-loading">搜索中...</div>
                   ) : searchResults.length === 0 ? (
-                    <div className="search-empty">未找到匹配的笔记</div>
+                    <div className="search-empty">未找到匹配内容</div>
                   ) : (
-                    searchResults.map(r => (
-                      <a
-                        key={r.note_id}
-                        href={`/#/project/${r.project_id}`}
-                        className="search-result-item"
-                      >
+                    searchResults.map(h => (
+                      <a key={`${h.type}-${h.id}`} href={`/#/project/${h.project_id}`} className="search-result-item">
                         <div className="search-result-header">
-                          <span className="search-result-project">{r.project_name}</span>
+                          <span className={`hit-type-mini hit-type-${h.type}`}>{h.type === 'note' ? '笔记' : '待办'}</span>
+                          <span className="search-result-project">{h.project_name}</span>
                         </div>
-                        <div className="search-result-preview">
-                          {r.content.length > 120 ? r.content.slice(0, 120) + '...' : r.content}
-                        </div>
+                        <div className="search-result-title">{h.title}</div>
+                        <div className="search-result-preview">{h.snippet}</div>
                       </a>
                     ))
                   )}
@@ -237,44 +261,24 @@ function Dashboard() {
               )}
             </div>
             <div className="filter-toggle">
-              <button
-                className={`filter-btn ${!showStarredOnly ? 'active' : ''}`}
-                onClick={() => setShowStarredOnly(false)}
-              >
-                全部
-              </button>
-              <button
-                className={`filter-btn ${showStarredOnly ? 'active' : ''}`}
-                onClick={() => setShowStarredOnly(true)}
-              >
-                关注
-              </button>
+              <button className={`filter-btn ${!showStarredOnly ? 'active' : ''}`} onClick={() => setShowStarredOnly(false)}>全部</button>
+              <button className={`filter-btn ${showStarredOnly ? 'active' : ''}`} onClick={() => setShowStarredOnly(true)}>关注</button>
             </div>
             <div className="sort-control">
               <label>排序：</label>
-              <select
-                value={sortKey}
-                onChange={(e) => setSortKey(e.target.value as SortKey)}
-                className="form-input sort-select"
-              >
-                {SORT_OPTIONS.map((opt) => (
-                  <option key={opt.key} value={opt.key}>{opt.label}</option>
-                ))}
+              <select value={sortKey} onChange={(e) => setSortKey(e.target.value as SortKey)} className="form-input sort-select">
+                {SORT_OPTIONS.map(opt => <option key={opt.key} value={opt.key}>{opt.label}</option>)}
               </select>
             </div>
             {confirmScan ? (
               <div className="confirm-group">
                 <span className="confirm-text">确定重新扫描？</span>
-                <button className="btn btn-primary btn-sm" onClick={handleScan} disabled={scanning}>
-                  确认
-                </button>
-                <button className="btn btn-sm" onClick={() => setConfirmScan(false)}>
-                  取消
-                </button>
+                <button className="btn btn-primary btn-sm" onClick={handleScan} disabled={scanning}>确认</button>
+                <button className="btn btn-sm" onClick={() => setConfirmScan(false)}>取消</button>
               </div>
             ) : (
               <button className="btn btn-primary" onClick={() => setConfirmScan(true)} disabled={scanning}>
-                {scanning ? '扫描中...' : '重新扫描'}
+                {scanning ? (scanMsg || '处理中...') : '重新扫描'}
               </button>
             )}
           </div>
@@ -294,13 +298,13 @@ function Dashboard() {
             {Array.from({ length: 6 }).map((_, i) => (
               <div key={i} className="project-card skeleton-card">
                 <div className="card-header">
-                  <div className="skeleton skeleton-text" style={{width: '60%', height: 20}} />
+                  <div className="skeleton skeleton-text" style={{ width: '60%', height: 20 }} />
                 </div>
                 <div className="card-grid">
                   {Array.from({ length: 4 }).map((_, j) => (
                     <div key={j} className="card-stat">
-                      <div className="skeleton skeleton-text" style={{width: 32, height: 10}} />
-                      <div className="skeleton skeleton-text" style={{width: 40, height: 16}} />
+                      <div className="skeleton skeleton-text" style={{ width: 32, height: 10 }} />
+                      <div className="skeleton skeleton-text" style={{ width: 40, height: 16 }} />
                     </div>
                   ))}
                 </div>
@@ -309,7 +313,7 @@ function Dashboard() {
           </div>
         ) : sorted.length === 0 ? (
           <div className="empty-state">
-            <div className="empty-icon">{showStarredOnly ? '&#11088;' : '&#128269;'}</div>
+            <div className="empty-icon">{showStarredOnly ? '⭐' : '🔍'}</div>
             <h3>{showStarredOnly ? '暂无关注项目' : '暂无项目数据'}</h3>
             <p>
               {showStarredOnly
@@ -318,25 +322,28 @@ function Dashboard() {
             </p>
             <div className="empty-actions">
               {showStarredOnly ? (
-                <button className="btn btn-primary" onClick={() => setShowStarredOnly(false)}>
-                  查看全部项目
-                </button>
+                <button className="btn btn-primary" onClick={() => setShowStarredOnly(false)}>查看全部项目</button>
               ) : (
                 <>
-                  <button className="btn btn-primary" onClick={() => setConfirmScan(true)}>
-                    开始扫描
-                  </button>
-                  <a href="/#/settings" className="btn btn-secondary">
-                    配置目录
-                  </a>
+                  <button className="btn btn-primary" onClick={() => setConfirmScan(true)}>开始扫描</button>
+                  <a href="/#/settings" className="btn btn-secondary">配置目录</a>
                 </>
               )}
             </div>
           </div>
         ) : (
           <div className="project-grid">
-            {sorted.map((p) => (
-              <ProjectCard key={p.id} project={p} date={date} todoCount={todoMap.get(p.id)} noteCount={noteMap.get(p.id)} onToggleStar={handleToggleStar} />
+            {sorted.map(p => (
+              <ProjectCard
+                key={p.id}
+                project={p}
+                date={date}
+                todoCount={todoMap.get(p.id)}
+                noteCount={noteMap.get(p.id)}
+                dailyGoal={isWorkday ? dailyGoal : 0}
+                isWorkday={isWorkday}
+                onToggleStar={handleToggleStar}
+              />
             ))}
           </div>
         )}

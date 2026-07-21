@@ -42,7 +42,12 @@ func setupTestApp(t *testing.T) *App {
 	CREATE TABLE IF NOT EXISTS project_notes (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		project_id INTEGER NOT NULL,
+		title TEXT DEFAULT '',
 		content TEXT NOT NULL,
+		tags TEXT DEFAULT '',
+		kind TEXT DEFAULT 'other',
+		pinned INTEGER DEFAULT 0,
+		source TEXT DEFAULT 'manual',
 		sort_order INTEGER DEFAULT 0,
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,

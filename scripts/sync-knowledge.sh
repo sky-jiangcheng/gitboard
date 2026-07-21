@@ -1,5 +1,10 @@
 #!/bin/bash
-# sync-knowledge.sh — Sync Claude memory files to GitBoard project notes
+# sync-knowledge.sh — Sync Claude memory files to GitBoard project notes (CLI)
+#
+# DEPRECATED: prefer the in-app import (Settings -> 操作 -> 导入 Claude 记忆),
+# which calls App.ImportClaudeMemory with parameterized, idempotent queries.
+# This script is kept for headless/automation use; content is escaped by
+# doubling single quotes (the SQL standard for string literals).
 # Usage: bash sync-knowledge.sh
 # This script reads Claude's project memory files and inserts them into
 # GitBoard's SQLite database as project notes, making them visible in the UI.

@@ -39,11 +39,23 @@ func setupTestDB(t *testing.T) *sql.DB {
 	CREATE TABLE IF NOT EXISTS project_notes (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		project_id INTEGER NOT NULL,
+		title TEXT DEFAULT '',
 		content TEXT NOT NULL,
+		tags TEXT DEFAULT '',
+		kind TEXT DEFAULT 'other',
+		pinned INTEGER DEFAULT 0,
+		source TEXT DEFAULT 'manual',
 		sort_order INTEGER DEFAULT 0,
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+	);
+	CREATE TABLE IF NOT EXISTS repo_meta (
+		repository_id INTEGER PRIMARY KEY,
+		tech_stack TEXT DEFAULT '[]',
+		readme_excerpt TEXT DEFAULT '',
+		languages TEXT DEFAULT '{}',
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	);
 	`
 	if _, err := db.Exec(schema); err != nil {

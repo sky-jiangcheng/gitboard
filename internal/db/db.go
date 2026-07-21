@@ -3,6 +3,9 @@ package db
 import (
 	"database/sql"
 	"fmt"
+	"log"
+	"strconv"
+	"strings"
 
 	_ "modernc.org/sqlite"
 )
@@ -104,11 +107,25 @@ func createTables(db *sql.DB) error {
 	CREATE TABLE IF NOT EXISTS project_notes (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		project_id INTEGER NOT NULL,
+		title TEXT DEFAULT '',
 		content TEXT NOT NULL,
+		tags TEXT DEFAULT '',
+		kind TEXT DEFAULT 'other',
+		pinned INTEGER DEFAULT 0,
+		source TEXT DEFAULT 'manual',
 		sort_order INTEGER DEFAULT 0,
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+	);
+
+	CREATE TABLE IF NOT EXISTS repo_meta (
+		repository_id INTEGER PRIMARY KEY,
+		tech_stack TEXT DEFAULT '[]',
+		readme_excerpt TEXT DEFAULT '',
+		languages TEXT DEFAULT '{}',
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY (repository_id) REFERENCES repositories(id) ON DELETE CASCADE
 	);
 	`
 
@@ -116,11 +133,125 @@ func createTables(db *sql.DB) error {
 	return err
 }
 
+// migrationVersionKey is the app_config key tracking the applied schema version.
+const migrationVersionKey = "schema_version"
+
 // upgradeSchema applies incremental schema changes for existing databases.
+// Migrations are tracked by a monotonically increasing version number stored in
+// app_config, so each migration runs exactly once even if ALTER errors leave a
+// column already present.
 func upgradeSchema(db *sql.DB) error {
-	// Add is_starred to projects (introduced v0.11.0)
-	_, _ = db.Exec("ALTER TABLE projects ADD COLUMN is_starred INTEGER DEFAULT 0")
+	from, err := readSchemaVersion(db)
+	if err != nil {
+		return fmt.Errorf("failed to read schema version: %w", err)
+	}
+
+	migrations := []migration{
+		// v1: add is_starred to projects (introduced v0.11.0)
+		{id: 1, sql: "ALTER TABLE projects ADD COLUMN is_starred INTEGER DEFAULT 0"},
+		// v2: structured notes metadata
+		{id: 2, sql: []string{
+			"ALTER TABLE project_notes ADD COLUMN title TEXT DEFAULT ''",
+			"ALTER TABLE project_notes ADD COLUMN tags TEXT DEFAULT ''",
+			"ALTER TABLE project_notes ADD COLUMN kind TEXT DEFAULT 'other'",
+			"ALTER TABLE project_notes ADD COLUMN pinned INTEGER DEFAULT 0",
+			"ALTER TABLE project_notes ADD COLUMN source TEXT DEFAULT 'manual'",
+		}},
+		// v3: knowledge mining cache + config key for git user
+		{id: 3, sql: []string{
+			"CREATE TABLE IF NOT EXISTS repo_meta (" +
+				"repository_id INTEGER PRIMARY KEY," +
+				"tech_stack TEXT DEFAULT '[]'," +
+				"readme_excerpt TEXT DEFAULT ''," +
+				"languages TEXT DEFAULT '{}'," +
+				"updated_at DATETIME DEFAULT CURRENT_TIMESTAMP," +
+				"FOREIGN KEY (repository_id) REFERENCES repositories(id) ON DELETE CASCADE)",
+		}},
+	}
+
+	for _, m := range migrations {
+		if m.id <= from {
+			continue
+		}
+		if err := m.apply(db); err != nil {
+			logMigrationError(m.id, err)
+			// Do not return: a failed ALTER (e.g. column already exists) must not
+			// block the version stamp, or re-runs would repeat forever.
+		}
+		if err := writeSchemaVersion(db, m.id); err != nil {
+			return fmt.Errorf("failed to stamp schema version %d: %w", m.id, err)
+		}
+	}
 	return nil
+}
+
+// migration represents one schema change.
+type migration struct {
+	id  int
+	sql any // string or []string
+}
+
+func (m migration) apply(db *sql.DB) error {
+	stmts := stmtList(m.sql)
+	for _, s := range stmts {
+		if _, err := db.Exec(s); err != nil {
+			// SQLite returns "duplicate column name" when a column already exists.
+			// Treat that as already-applied rather than a hard failure.
+			if isAlreadyExistsErr(err) {
+				continue
+			}
+			return err
+		}
+	}
+	return nil
+}
+
+func stmtList(s any) []string {
+	switch v := s.(type) {
+	case string:
+		return []string{v}
+	case []string:
+		return v
+	default:
+		return nil
+	}
+}
+
+func isAlreadyExistsErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "duplicate column name") || strings.Contains(msg, "already exists")
+}
+
+func readSchemaVersion(db *sql.DB) (int, error) {
+	// app_config.value is TEXT, so scan into a string and parse.
+	var raw string
+	err := db.QueryRow("SELECT value FROM app_config WHERE key = ?", migrationVersionKey).Scan(&raw)
+	if err == sql.ErrNoRows {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	v, err := strconv.Atoi(raw)
+	if err != nil {
+		return 0, nil
+	}
+	return v, nil
+}
+
+func writeSchemaVersion(db *sql.DB, version int) error {
+	_, err := db.Exec(
+		"INSERT OR REPLACE INTO app_config (key, value) VALUES (?, ?)",
+		migrationVersionKey, strconv.Itoa(version),
+	)
+	return err
+}
+
+func logMigrationError(id int, err error) {
+	log.Printf("schema migration %d warning: %v", id, err)
 }
 
 // insertDefaults inserts default configuration values if they don't exist.

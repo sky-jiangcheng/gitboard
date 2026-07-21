@@ -18,9 +18,13 @@
 | 特性 | 说明 |
 |------|------|
 | 自动发现仓库 | 设置扫描根目录后递归发现所有 Git 仓库，平台自适应默认规则 |
-| 可视化仪表盘 | 每个项目独立卡片展示新增/删除/净增行数，趋势折线图 |
-| 智能项目分组 | 自动识别 Monorepo 与单仓库，支持手动调整目录级别 |
+| 可视化仪表盘 | 每日目标进度环突出「我达标了吗」；项目卡片、趋势折线图、提交热力图 |
+| 智能项目分组 | 自动识别 Monorepo 与单仓库，支持手动拆分/合并（事务安全，笔记与待办随项目迁移） |
 | 工作日检查 | 自定义每日代码量标准，未达标时面板告警提醒 |
+| 知识库 | 跨项目笔记中心：Markdown 笔记、标签、置顶、分类；全文搜索（排序 + 片段高亮，跨笔记与待办） |
+| 仓库知识挖掘 | 自动提取 README、检测技术栈与语言占比、最近提交流，缓存避免重复扫描 |
+| 命令面板 | ⌘/Ctrl+K 快速搜索笔记/待办并跳转项目 |
+| Claude 记忆导入 | 一键将 `~/.claude/projects/*/memory/*.md` 安全导入为知识笔记（参数化查询，幂等） |
 | 跨平台单文件 | Go 编译为单个二进制，无运行时依赖，双击即用 |
 | PWA 可安装 | 支持安装到桌面/主屏幕，获得原生应用体验 |
 
@@ -60,9 +64,12 @@ chmod +x gitboard
 在设置页面可修改扫描目录、代码量标准（默认 500 行/工作日）、扫描深度（1-10级，默认 5 级）。
 
 配置存储在应用数据目录下的 `gitboard` 文件夹中：
-- **Windows**: `%APPDATA%/gitboard/app_config.db`
-- **macOS**: `~/Library/Application Support/gitboard/app_config.db`
-- **Linux**: `~/.config/gitboard/app_config.db`
+
+- **Windows**: `%APPDATA%/gitboard/dashboard.db`
+- **macOS**: `~/Library/Application Support/gitboard/dashboard.db`
+- **Linux**: `~/.config/gitboard/dashboard.db`
+
+> 注意：数据库文件名为 `dashboard.db`。若你从早期版本升级，schema 会自动迁移（结构化笔记字段、知识挖掘缓存表等）。
 
 ## 从源码构建
 
@@ -106,27 +113,32 @@ GitBoard 使用智能分组算法自动识别项目边界：
 
 通过设置页面的「项目分组级别」调整键，可以手动将整个父目录提级或将其子仓库拆分为独立项目。
 
-## API 接口
+## 前后端接口
 
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/api/health` | 健康检查（返回数据库和版本状态） |
-| GET | `/api/projects` | 项目列表，支持 `?date=YYYY-MM-DD` 查询指定日期 |
-| GET | `/api/projects/{id}` | 项目详情（含仓库列表和历史统计） |
-| GET | `/api/projects/{id}/stats` | 项目单日统计，支持 `?date=YYYY-MM-DD` |
-| POST | `/api/projects/{id}/level` | 调整项目分组级别 `{"direction": "up"|"down"}` |
-| POST | `/api/scan` | 触发仓库扫描和重新分组 |
-| GET | `/api/config` | 获取全部配置和扫描根目录列表 |
-| PUT | `/api/config` | 更新配置 `[{"key": "daily_code_standard", "value": "500"}]` |
-| GET | `/api/summary` | 全局摘要统计，支持 `?date=YYYY-MM-DD` |
+GitBoard 是 Wails 桌面应用：Go 方法通过 Wails Bind 直接暴露给前端（`window.go.main.App.*`），开发模式下（`npm run dev`）前端通过 `/api` HTTP 代理回退访问同一逻辑。主要绑定方法：
 
-所有响应均为 JSON 格式。错误响应格式：`{"error": "描述信息"}`。
+| 方法 | 说明 |
+|------|------|
+| `GetProjects(date, starredOnly)` | 项目列表，支持按日期与关注过滤 |
+| `GetProjectDetail(id)` | 项目详情（仓库列表与历史统计） |
+| `GetProjectOverview(id)` | 仓库知识挖掘（README/技术栈/语言/最近提交） |
+| `GetSummary(date)` | 全局摘要统计 |
+| `GetHeatmapData()` | 近一年提交热力图 |
+| `UpdateProjectLevel(id, direction)` | 拆分（down）/合并（up）项目分组 |
+| `SearchNotes(query)` / `SearchAll(query)` | 笔记搜索 / 跨笔记与待办搜索（排序 + 片段） |
+| `ListAllNotes()` / `ListAllTags()` | 知识库：全部笔记与标签 |
+| `CreateNoteWithMeta` / `UpdateNoteMeta` / `PinNote` | 笔记元数据（标题/标签/类型/置顶） |
+| `ImportClaudeMemory()` | 导入 Claude 记忆为知识笔记 |
+| `TriggerScan()` / `GetScanStatus()` | 扫描与状态（区分扫描中/回填历史中） |
+
+错误以 Go `error` 形式返回，前端按需展示。
 
 ## 技术栈
 
 | 层 | 技术 |
 |----|------|
-| 后端 | Go + net/http + SQLite (modernc.org/sqlite, 零 CGO) |
+| 桌面框架 | Wails v2（Go 后端方法直绑前端） |
+| 后端 | Go + SQLite (modernc.org/sqlite，零 CGO) |
 | 前端 | React 18 + TypeScript + Vite + Chart.js |
 | PWA | vite-plugin-pwa + Workbox |
 | 构建 | GitHub Actions 自动发布 Win/Mac/Linux 二进制 |
@@ -135,18 +147,21 @@ GitBoard 使用智能分组算法自动识别项目边界：
 
 ```
 ├── main.go              # Go 程序入口，启动编排和优雅退出
+├── app.go               # Wails 绑定方法（项目/笔记/知识/扫描等）
 ├── internal/
 │   ├── platform/        # 平台检测、浏览器打开、默认扫描规则
-│   ├── db/              # SQLite 表结构和数据 CRUD
+│   ├── db/              # SQLite 表结构、版本化迁移与数据 CRUD
 │   ├── scanner/         # Git 仓库递归扫描（深度/数量限制）
-│   ├── stats/           # git log --shortstat 解析引擎
-│   ├── grouper/         # 智能项目分组（Monorepo 识别）
-│   └── server/          # REST API 服务（7 个端点 + 中间件）
+│   ├── stats/           # git log --shortstat 解析、最近提交
+│   ├── grouper/         # 智能项目分组（Monorepo 识别、级别调整）
+│   └── knowledge/       # 仓库知识挖掘（README / 技术栈 / 语言占比）
 ├── web/                 # React SPA 前端（Vite + PWA）
 │   └── src/
-│       ├── pages/       # Dashboard / ProjectDetail / Settings
-│       ├── components/  # ProjectCard / SummaryBar / DatePicker / TrendChart
-│       └── api/         # API 客户端封装
+│       ├── pages/       # Dashboard / ProjectDetail / Knowledge / Settings
+│       ├── components/  # ProjectCard / SummaryBar / GoalRing / Heatmap
+│       │                 # / TrendChart / NoteSection / TodoSection / CommandPalette
+│       ├── api/         # 双模式 API 客户端（Wails 绑定 + HTTP 回退）
+│       └── utils/       # 主题、Markdown 渲染
 ├── docs/                # GitHub Pages 落地页（产品介绍）
 ├── scripts/             # 构建和安装脚本
 └── .github/workflows/   # 多平台构建发布 + Pages 部署

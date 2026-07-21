@@ -6,16 +6,22 @@ interface Props {
   date?: string
   todoCount?: number
   noteCount?: number
+  dailyGoal?: number
+  isWorkday?: boolean
   onToggleStar?: (id: number) => void
 }
 
-function ProjectCard({ project, date, todoCount, noteCount, onToggleStar }: Props) {
+function ProjectCard({ project, date, todoCount, noteCount, dailyGoal = 0, isWorkday = true, onToggleStar }: Props) {
   const netAdded = project.my_added - project.my_deleted
   const to = date ? `/project/${project.id}?date=${date}` : `/project/${project.id}`
 
   const contributionRatio = project.my_added + project.my_deleted > 0
     ? Math.round((project.my_added / (project.my_added + project.my_deleted)) * 100)
     : 50
+
+  // Goal progress: how much of the daily target this project's additions represent.
+  const goalPct = dailyGoal > 0 ? Math.min(Math.round((project.my_added / dailyGoal) * 100), 100) : 0
+  const reachedGoal = isWorkday && project.my_added > 0 && project.my_added >= dailyGoal
 
   const handleStarClick = (e: React.MouseEvent) => {
     e.preventDefault()
@@ -24,7 +30,7 @@ function ProjectCard({ project, date, todoCount, noteCount, onToggleStar }: Prop
   }
 
   return (
-    <Link to={to} className="project-card">
+    <Link to={to} className={`project-card ${reachedGoal ? 'card-goal-reached' : ''}`}>
       <button
         className={`card-star ${project.is_starred ? 'starred' : ''}`}
         onClick={handleStarClick}
@@ -37,6 +43,7 @@ function ProjectCard({ project, date, todoCount, noteCount, onToggleStar }: Prop
       <div className="card-header">
         <h3>{project.name}</h3>
         <div className="card-badges">
+          {reachedGoal && <span className="badge badge-goal" title="已达成今日目标">达标</span>}
           {noteCount !== undefined && noteCount > 0 && (
             <span className="badge badge-note" title="知识笔记">{noteCount}</span>
           )}
@@ -47,6 +54,20 @@ function ProjectCard({ project, date, todoCount, noteCount, onToggleStar }: Prop
           {!project.is_workday && <span className="badge badge-info">非工作日</span>}
         </div>
       </div>
+
+      <div className="card-hero-num">
+        <span className="card-hero-label">今日新增</span>
+        <span className={`card-hero-value ${project.my_added > 0 ? 'green' : ''}`}>+{project.my_added}</span>
+      </div>
+
+      {isWorkday && dailyGoal > 0 && project.my_added > 0 && (
+        <div className="card-goal-bar">
+          <div className="card-goal-track">
+            <div className="card-goal-fill" style={{ width: `${goalPct}%` }} />
+          </div>
+          <span className="card-goal-pct">{goalPct}% 目标</span>
+        </div>
+      )}
 
       <div className="card-grid">
         <div className="card-stat">
@@ -69,14 +90,8 @@ function ProjectCard({ project, date, todoCount, noteCount, onToggleStar }: Prop
 
       <div className="card-progress">
         <div className="progress-bar">
-          <div 
-            className="progress-fill" 
-            style={{ width: `${contributionRatio}%` }}
-          />
-          <div 
-            className="progress-fill deleted" 
-            style={{ width: `${100 - contributionRatio}%` }}
-          />
+          <div className="progress-fill" style={{ width: `${contributionRatio}%` }} />
+          <div className="progress-fill deleted" style={{ width: `${100 - contributionRatio}%` }} />
         </div>
         <div className="progress-info">
           <span className="progress-label">净增</span>

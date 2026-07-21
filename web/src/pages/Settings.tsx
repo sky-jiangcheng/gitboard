@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { getConfig, updateConfig, updateScanRoots, triggerScan } from '../api/client'
+import { getConfig, updateConfig, updateScanRoots, triggerScan, importClaudeMemory } from '../api/client'
 import { applyTheme, getStoredTheme, storeTheme, type ThemeMode } from '../utils/theme'
 
 interface ConfigData {
@@ -33,6 +33,7 @@ function Settings() {
   const [authorName, setAuthorName] = useState('')
   const [themeMode, setThemeMode] = useState<ThemeMode>('system')
   const [message, setMessage] = useState('')
+  const [importing, setImporting] = useState(false)
   const [tab, setTab] = useState<TabKey>('scan')
   const timerRef = useRef<ReturnType<typeof setTimeout>>()
 
@@ -140,6 +141,18 @@ function Settings() {
       showMessage('扫描失败: ' + msg)
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleImport = async () => {
+    setImporting(true)
+    try {
+      const r = await importClaudeMemory()
+      showMessage(`导入完成：新增 ${r.synced}，更新 ${r.updated}，跳过 ${r.skipped}`)
+    } catch (e: unknown) {
+      showMessage('导入失败: ' + (e instanceof Error ? e.message : '未知错误'))
+    } finally {
+      setImporting(false)
     }
   }
 
@@ -297,9 +310,23 @@ function Settings() {
         <div className="settings-section">
           <h2>操作</h2>
           <p className="section-desc">手动触发全量重新扫描，刷新所有仓库的统计数据。</p>
-          <button className="btn btn-primary" onClick={handleRescan} disabled={saving}>
-            立即重新扫描所有项目
-          </button>
+          <div className="action-row">
+            <button className="btn btn-primary" onClick={handleRescan} disabled={saving}>
+              立即重新扫描所有项目
+            </button>
+          </div>
+
+          <h2 style={{ marginTop: 24 }}>导入 Claude 记忆</h2>
+          <p className="section-desc">
+            将 <code>~/.claude/projects/*/memory/*.md</code> 中的笔记按项目匹配导入为知识笔记。
+            重复导入会更新已有笔记而非重复创建。
+          </p>
+          <div className="action-row">
+            <button className="btn btn-primary" onClick={handleImport} disabled={importing}>
+              {importing ? '导入中…' : '导入 Claude 记忆'}
+            </button>
+            <a href="/#/knowledge" className="btn btn-secondary">前往知识库查看</a>
+          </div>
         </div>
       )}
     </div>

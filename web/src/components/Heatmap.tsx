@@ -4,6 +4,10 @@ import { getHeatmapData, type HeatmapDay } from '../api/client'
 const WEEKS = 52
 const DAYS_PER_WEEK = 7
 
+interface Props {
+  onDayClick?: (date: string) => void
+}
+
 function getLevel(day: HeatmapDay | null): number {
   if (!day) return 0
   const total = day.lines_added + day.lines_deleted
@@ -64,7 +68,7 @@ function generateGrid(days: HeatmapDay[]): (HeatmapDay | null)[][] {
   return grid
 }
 
-export default function Heatmap() {
+export default function Heatmap({ onDayClick }: Props) {
   const [days, setDays] = useState<HeatmapDay[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -160,7 +164,9 @@ export default function Heatmap() {
                   <div
                     key={di}
                     className={`heatmap-cell level-${getLevel(day)}`}
-                    title={day ? `${formatDate(day.date)}: +${day.lines_added} -${day.lines_deleted} (${day.commits} 次提交)` : ''}
+                    title={day ? `${formatDate(day.date)}: +${day.lines_added} -${day.lines_deleted} (${day.commits} 次提交)${onDayClick ? ' — 点击查看' : ''}` : ''}
+                    onClick={day && onDayClick ? () => onDayClick(day.date) : undefined}
+                    role={day && onDayClick ? 'button' : undefined}
                   />
                 ))}
               </div>

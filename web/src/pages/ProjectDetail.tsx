@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
-import { getProjectDetail, updateProjectLevel, ProjectDetail } from '../api/client'
+import { getProjectDetail, getProjectOverview, updateProjectLevel, ProjectDetail, ProjectOverview } from '../api/client'
+import { renderMarkdown } from '../utils/markdown'
 import TrendChart, { TrendDataset } from '../components/TrendChart'
 import Heatmap from '../components/Heatmap'
 import StatusBar from '../components/StatusBar'
@@ -24,6 +25,7 @@ function ProjectDetailPage() {
   const dateParam = searchParams.get('date') || ''
 
   const [project, setProject] = useState<ProjectDetail | null>(null)
+  const [overview, setOverview] = useState<ProjectOverview | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [range, setRange] = useState<'week' | 'month' | 'all'>('week')
@@ -33,7 +35,10 @@ function ProjectDetailPage() {
     setLoading(true)
     setError('')
     getProjectDetail(Number(id))
-      .then(setProject)
+      .then(p => {
+        setProject(p)
+        getProjectOverview(Number(id)).then(setOverview).catch(() => {})
+      })
       .catch((e) => setError(e instanceof Error ? e.message : '加载失败'))
       .finally(() => setLoading(false))
   }, [id])
@@ -181,6 +186,63 @@ function ProjectDetailPage() {
       </div>
 
       <div className="project-scroll">
+        {overview && (overview.readme_excerpt || overview.tech_stack.length > 0 || overview.recent_commits.length > 0) && (
+          <div className="detail-section overview-section">
+            <div className="section-header">
+              <h2>项目概览</h2>
+              <span className="overview-cache-hint">{overview.cached ? '来自缓存' : '实时挖掘'}</span>
+            </div>
+
+            {overview.tech_stack.length > 0 && (
+              <div className="overview-tech">
+                {overview.tech_stack.map(t => (
+                  <span key={t.name} className={`tech-chip tech-${t.category}`}>{t.name}</span>
+                ))}
+              </div>
+            )}
+
+            {overview.languages.length > 0 && (
+              <div className="overview-langs">
+                {overview.languages.map(l => {
+                  const max = overview.languages[0]?.count || 1
+                  return (
+                    <div key={l.language} className="lang-row">
+                      <span className="lang-name">{l.language}</span>
+                      <div className="lang-bar"><div className="lang-fill" style={{ width: `${(l.count / max) * 100}%` }} /></div>
+                      <span className="lang-count">{l.count}</span>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+
+            {overview.readme_excerpt && (
+              <div className="overview-readme markdown-body" dangerouslySetInnerHTML={{ __html: renderMarkdown(overview.readme_excerpt) }} />
+            )}
+
+            {overview.recent_commits.length > 0 && (
+              <div className="overview-commits">
+                <h4 className="overview-sub-title">最近提交</h4>
+                <ul className="commit-feed">
+                  {overview.recent_commits.map((c, i) => (
+                    <li key={i} className="commit-feed-item">
+                      <span className="commit-dot" />
+                      <div className="commit-feed-body">
+                        <div className="commit-feed-msg">{c.message}</div>
+                        <div className="commit-feed-meta">
+                          <span>{c.time}</span>
+                          {c.branch && <span className="commit-branch">{c.branch}</span>}
+                          <span className="commit-author">{c.author}</span>
+                        </div>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="detail-section">
           <div className="section-header">
             <h2>提交热力图</h2>
