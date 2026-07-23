@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react'
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import {
   getProjects, getSummary, triggerScan, getTodoCounts, getNoteCounts, searchAll,
   getScanStatus, toggleStar, getConfig, Project, Summary, TodoCount, NoteCount, SearchHit,
@@ -66,21 +66,8 @@ function Dashboard() {
     }
   }
 
-  useEffect(() => {
-    getConfig()
-      .then(c => {
-        const v = parseInt(c.config.daily_code_standard || '500', 10)
-        if (!isNaN(v) && v > 0) setDailyGoal(v)
-      })
-      .catch(() => {})
-    fetchData(date)
-    checkScanStatus()
-    return () => { if (pollTimer.current) clearInterval(pollTimer.current) }
-  }, [date])
-
-  useEffect(() => { fetchData(date, showStarredOnly) }, [showStarredOnly])
-
-  const checkScanStatus = async () => {
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const checkScanStatus = useCallback(async () => {
     try {
       const status = await getScanStatus()
       if (status.running || status.backfilling) {
@@ -94,7 +81,7 @@ function Dashboard() {
               pollTimer.current = null
               setScanning(false)
               setScanMsg('')
-              fetchData(date)
+              fetchData(date, showStarredOnly)
             } else {
               setScanMsg(s.message)
             }
@@ -102,7 +89,19 @@ function Dashboard() {
         }
       }
     } catch { /* ignore */ }
-  }
+  }, [date, showStarredOnly])
+
+  useEffect(() => {
+    getConfig()
+      .then(c => {
+        const v = parseInt(c.config.daily_code_standard || '500', 10)
+        if (!isNaN(v) && v > 0) setDailyGoal(v)
+      })
+      .catch(() => {})
+    fetchData(date, showStarredOnly)
+    checkScanStatus()
+    return () => { if (pollTimer.current) clearInterval(pollTimer.current) }
+  }, [date, showStarredOnly, checkScanStatus])
 
   const handleScan = async () => {
     setConfirmScan(false)
@@ -141,9 +140,8 @@ function Dashboard() {
     }
   }
 
-  const handleSearch = async (query: string) => {
-    setSearchQuery(query)
-    if (!query.trim()) { setSearchResults(null); return }
+  const handleSearch = useCallback(async (query: string) => {
+    if (!query.trim()) { setSearchResults(null); setSearching(false); return }
     setSearching(true)
     try {
       const results = await searchAll(query)
@@ -153,19 +151,24 @@ function Dashboard() {
     } finally {
       setSearching(false)
     }
-  }
+  }, [])
 
-  // Debounced search wrapper
+  // Debounced search wrapper with proper cleanup
   const debounceRef = useRef<ReturnType<typeof setTimeout>>()
-  const handleSearchDebounced = (query: string) => {
+  const handleSearchDebounced = useCallback((query: string) => {
     setSearchQuery(query)
-    if (!query.trim()) { setSearchResults(null); setSearching(false); return }
     if (debounceRef.current) clearTimeout(debounceRef.current)
+    if (!query.trim()) { setSearchResults(null); setSearching(false); return }
     setSearching(true)
     debounceRef.current = setTimeout(() => {
       handleSearch(query)
     }, 300)
-  }
+  }, [handleSearch])
+
+  // Cleanup debounce timer on unmount
+  useEffect(() => {
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current) }
+  }, [])
 
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {

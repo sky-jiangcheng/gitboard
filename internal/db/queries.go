@@ -115,12 +115,12 @@ type Project struct {
 // ProjectWithStats includes statistics summary for a project.
 type ProjectWithStats struct {
 	Project
-	RepoCount     int `json:"repo_count"`
-	TotalAdded    int `json:"total_added"`
-	TotalDeleted  int `json:"total_deleted"`
-	MyAdded       int `json:"my_added"`
-	MyDeleted     int `json:"my_deleted"`
-	MyFiles       int `json:"my_files"`
+	RepoCount    int `json:"repo_count"`
+	TotalAdded   int `json:"total_added"`
+	TotalDeleted int `json:"total_deleted"`
+	MyAdded      int `json:"my_added"`
+	MyDeleted    int `json:"my_deleted"`
+	MyFiles      int `json:"my_files"`
 }
 
 // UpsertProject inserts or updates a project record.
@@ -193,6 +193,92 @@ func UpdateProjectLevel(db *sql.DB, id int64, levelOverride int) error {
 func DeleteAllProjects(db *sql.DB) error {
 	_, err := db.Exec("DELETE FROM projects")
 	return err
+}
+
+// SyncProjectTx finds an existing project by root_path or creates a new one.
+// Preserves is_starred for existing projects. Only updates name/is_auto_grouped
+// for projects that were auto-grouped, respecting manual user adjustments.
+// Returns the project ID.
+func SyncProjectTx(tx *sql.Tx, name, rootPath string, levelOverride int, isAutoGrouped bool) (int64, error) {
+	var id int64
+	var existingAutoGrouped bool
+	err := tx.QueryRow("SELECT id, is_auto_grouped FROM projects WHERE root_path = ?", rootPath).Scan(&id, &existingAutoGrouped)
+	if err == nil {
+		// Only update auto-grouped projects; preserve manually adjusted ones
+		if existingAutoGrouped {
+			_, err = tx.Exec(
+				"UPDATE projects SET name = ?, is_auto_grouped = ? WHERE id = ?",
+				name, isAutoGrouped, id,
+			)
+		}
+		return id, err
+	}
+	if err != sql.ErrNoRows {
+		return 0, err
+	}
+	// Insert new project
+	res, err := tx.Exec(
+		"INSERT INTO projects (name, root_path, level_override, is_auto_grouped) VALUES (?, ?, ?, ?)",
+		name, rootPath, levelOverride, isAutoGrouped,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return res.LastInsertId()
+}
+
+// CleanupStaleDataTx removes repositories not in scannedPaths (along with their
+// stats and meta), then deletes projects that have no repos, notes, or todos.
+// User-created notes and todos are always preserved.
+func CleanupStaleDataTx(tx *sql.Tx, scannedPaths []string) error {
+	if len(scannedPaths) == 0 {
+		return nil
+	}
+
+	// Create a temporary table to hold scanned paths (avoids SQL parameter limits)
+	if _, err := tx.Exec("CREATE TEMP TABLE IF NOT EXISTS _scanned_paths (path TEXT NOT NULL UNIQUE)"); err != nil {
+		return fmt.Errorf("failed to create temp table: %w", err)
+	}
+	defer func() { _, _ = tx.Exec("DROP TABLE IF EXISTS _scanned_paths") }() //nolint:errcheck
+
+	// Batch insert scanned paths
+	stmt, err := tx.Prepare("INSERT OR IGNORE INTO _scanned_paths (path) VALUES (?)")
+	if err != nil {
+		return fmt.Errorf("failed to prepare insert: %w", err)
+	}
+	defer stmt.Close() //nolint:errcheck
+	for _, p := range scannedPaths {
+		if _, err := stmt.Exec(p); err != nil {
+			return fmt.Errorf("failed to insert scanned path: %w", err)
+		}
+	}
+
+	// Delete daily_stats for repos not in scanned set
+	if _, err := tx.Exec(`
+		DELETE FROM daily_stats
+		WHERE repository_id IN (
+			SELECT id FROM repositories WHERE path NOT IN (SELECT path FROM _scanned_paths)
+		)
+	`); err != nil {
+		return fmt.Errorf("failed to cleanup stale stats: %w", err)
+	}
+
+	// Delete stale repos (repo_meta cascades via FK)
+	if _, err := tx.Exec("DELETE FROM repositories WHERE path NOT IN (SELECT path FROM _scanned_paths)"); err != nil {
+		return fmt.Errorf("failed to cleanup stale repos: %w", err)
+	}
+
+	// Delete orphaned projects: no repos, no notes, no todos
+	if _, err := tx.Exec(`
+		DELETE FROM projects WHERE
+			id NOT IN (SELECT DISTINCT project_id FROM repositories WHERE project_id IS NOT NULL)
+			AND id NOT IN (SELECT DISTINCT project_id FROM project_notes)
+			AND id NOT IN (SELECT DISTINCT project_id FROM project_todos)
+	`); err != nil {
+		return fmt.Errorf("failed to cleanup orphaned projects: %w", err)
+	}
+
+	return nil
 }
 
 // ToggleProjectStar flips the starred status of a project.
@@ -823,10 +909,10 @@ func scanNotes(rows *sql.Rows) ([]Note, error) {
 
 // HeatmapDay represents a single day's contribution data.
 type HeatmapDay struct {
-	Date        string `json:"date"`
-	LinesAdded  int    `json:"lines_added"`
-	LinesDeleted int   `json:"lines_deleted"`
-	Commits     int    `json:"commits"`
+	Date         string `json:"date"`
+	LinesAdded   int    `json:"lines_added"`
+	LinesDeleted int    `json:"lines_deleted"`
+	Commits      int    `json:"commits"`
 }
 
 // GetHeatmapData returns daily aggregated stats for the given date range and author.
@@ -1160,11 +1246,11 @@ func GetTodoCounts(db *sql.DB) ([]TodoCount, error) {
 // RepoMeta caches mined knowledge (tech stack, README excerpt, language breakdown)
 // for a repository so repeated dashboard loads do not re-scan the filesystem.
 type RepoMeta struct {
-	RepositoryID int64  `json:"repository_id"`
-	TechStack    string `json:"tech_stack"`    // JSON array of tech names
+	RepositoryID  int64  `json:"repository_id"`
+	TechStack     string `json:"tech_stack"` // JSON array of tech names
 	ReadmeExcerpt string `json:"readme_excerpt"`
-	Languages    string `json:"languages"`      // JSON map of language->file count
-	UpdatedAt    string `json:"updated_at"`
+	Languages     string `json:"languages"` // JSON map of language->file count
+	UpdatedAt     string `json:"updated_at"`
 }
 
 // GetRepoMeta returns cached meta for a repository, or nil if absent.

@@ -174,12 +174,29 @@ export interface StatusBarData {
 
 // --- Wails mode helper ---
 
-const isWails = (): boolean =>
-  typeof window !== 'undefined' && !!(window as any).go?.main?.App
+// Wails injects Go methods onto window.go.main.App at runtime.
+// We define a minimal interface for type safety.
+interface WailsApp {
+  [method: string]: (...args: unknown[]) => Promise<unknown>
+}
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function wail<T>(method: string, ...args: any[]): Promise<T> {
-  const app = (window as any).go.main.App
+interface WailsGlobal {
+  go?: {
+    main?: {
+      App?: WailsApp
+    }
+  }
+}
+
+const isWails = (): boolean => {
+  if (typeof window === 'undefined') return false
+  const w = window as unknown as WailsGlobal
+  return !!w.go?.main?.App
+}
+
+function wail<T>(method: string, ...args: unknown[]): Promise<T> {
+  const w = window as unknown as WailsGlobal
+  const app = w.go!.main!.App!
   return app[method](...args) as Promise<T>
 }
 
