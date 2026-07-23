@@ -42,6 +42,7 @@ function NoteSection({ projectId }: Props) {
   const [isNew, setIsNew] = useState(false)
   const [saving, setSaving] = useState(false)
   const [filter, setFilter] = useState<KindFilter>('all')
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null)
 
   const [draft, setDraft] = useState(() => loadDraft(projectId))
 
@@ -100,9 +101,14 @@ function NoteSection({ projectId }: Props) {
   }
 
   const handleDelete = async (id: number) => {
+    if (confirmDeleteId !== id) {
+      setConfirmDeleteId(id)
+      return
+    }
     try {
       await deleteNote(id)
       setNotes(prev => prev.filter(n => n.id !== id))
+      setConfirmDeleteId(null)
     } catch { /* ignore */ }
   }
 
@@ -128,7 +134,7 @@ function NoteSection({ projectId }: Props) {
   }
 
   return (
-    <div className="note-section">
+    <div className="panel-section">
       <div className="note-header">
         <h3>知识笔记 ({notes.length})</h3>
         {!isNew && editingId === null && (
@@ -266,7 +272,13 @@ function NoteSection({ projectId }: Props) {
                     </span>
                     <div className="note-actions">
                       <button className="btn btn-sm" onClick={() => startEdit(note)}>编辑</button>
-                      <button className="btn btn-sm btn-danger" onClick={() => handleDelete(note.id)}>删除</button>
+                      <button
+                        className={`btn btn-sm ${confirmDeleteId === note.id ? 'btn-delete-confirm' : 'btn-danger'}`}
+                        onClick={() => handleDelete(note.id)}
+                        onBlur={() => setConfirmDeleteId(null)}
+                      >
+                        {confirmDeleteId === note.id ? '确认删除' : '删除'}
+                      </button>
                     </div>
                   </div>
                 </>

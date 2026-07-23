@@ -38,7 +38,7 @@ function Dashboard() {
   const [confirmScan, setConfirmScan] = useState(false)
   const [todoCounts, setTodoCounts] = useState<TodoCount[]>([])
   const [noteCounts, setNoteCounts] = useState<NoteCount[]>([])
-  const [showStarredOnly, setShowStarredOnly] = useState(true)
+  const [showStarredOnly, setShowStarredOnly] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<SearchHit[] | null>(null)
   const [searching, setSearching] = useState(false)
@@ -155,6 +155,18 @@ function Dashboard() {
     }
   }
 
+  // Debounced search wrapper
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>()
+  const handleSearchDebounced = (query: string) => {
+    setSearchQuery(query)
+    if (!query.trim()) { setSearchResults(null); setSearching(false); return }
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    setSearching(true)
+    debounceRef.current = setTimeout(() => {
+      handleSearch(query)
+    }, 300)
+  }
+
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
       if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
@@ -235,7 +247,7 @@ function Dashboard() {
               <input
                 type="text"
                 value={searchQuery}
-                onChange={e => handleSearch(e.target.value)}
+                    onChange={e => handleSearchDebounced(e.target.value)}
                 placeholder="搜索笔记与待办…"
                 className="form-input search-input"
               />

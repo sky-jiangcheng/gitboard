@@ -10,6 +10,7 @@ function TodoSection({ projectId }: Props) {
   const [loading, setLoading] = useState(true)
   const [title, setTitle] = useState('')
   const [adding, setAdding] = useState(false)
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null)
 
   const fetchTodos = useCallback(() => {
     listTodos(projectId).then(setTodos).finally(() => setLoading(false))
@@ -38,9 +39,14 @@ function TodoSection({ projectId }: Props) {
   }
 
   const handleDelete = async (id: number) => {
+    if (confirmDeleteId !== id) {
+      setConfirmDeleteId(id)
+      return
+    }
     try {
       await deleteTodo(id)
       setTodos(prev => prev.filter(t => t.id !== id))
+      setConfirmDeleteId(null)
     } catch { /* ignore */ }
   }
 
@@ -105,8 +111,13 @@ function TodoSection({ projectId }: Props) {
                 <button className="btn-icon" onClick={() => move(i, 1)} disabled={i === todos.length - 1} title="下移">
                   &#x25BC;
                 </button>
-                <button className="btn-icon btn-delete" onClick={() => handleDelete(todo.id)} title="删除">
-                  &#x2715;
+                <button
+                  className={`btn-icon ${confirmDeleteId === todo.id ? 'btn-delete-confirm' : 'btn-delete'}`}
+                  onClick={() => handleDelete(todo.id)}
+                  onBlur={() => setConfirmDeleteId(null)}
+                  title={confirmDeleteId === todo.id ? '再次点击确认删除' : '删除'}
+                >
+                  {confirmDeleteId === todo.id ? '?' : '\u2715'}
                 </button>
               </div>
             </li>

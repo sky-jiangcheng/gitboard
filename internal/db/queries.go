@@ -140,6 +140,22 @@ func UpsertProject(db *sql.DB, name, rootPath string, levelOverride int, isAutoG
 	return res.LastInsertId()
 }
 
+// UpsertProjectTx performs UpsertProject within a given transaction.
+func UpsertProjectTx(tx *sql.Tx, name, rootPath string, levelOverride int, isAutoGrouped bool) (int64, error) {
+	res, err := tx.Exec(
+		`INSERT INTO projects (name, root_path, level_override, is_auto_grouped)
+		 VALUES (?, ?, ?, ?)
+		 ON CONFLICT(id) DO UPDATE SET
+		 name=excluded.name, root_path=excluded.root_path,
+		 level_override=excluded.level_override, is_auto_grouped=excluded.is_auto_grouped`,
+		name, rootPath, levelOverride, isAutoGrouped,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return res.LastInsertId()
+}
+
 // GetAllProjects returns all projects.
 func GetAllProjects(db *sql.DB) ([]Project, error) {
 	rows, err := db.Query("SELECT id, name, root_path, level_override, is_auto_grouped, is_starred, created_at FROM projects ORDER BY name")
@@ -232,6 +248,17 @@ type Repository struct {
 // UpsertRepository inserts or updates a repository record.
 func UpsertRepository(db *sql.DB, path string, projectID int64) error {
 	_, err := db.Exec(
+		`INSERT INTO repositories (path, project_id)
+		 VALUES (?, ?)
+		 ON CONFLICT(path) DO UPDATE SET project_id=excluded.project_id`,
+		path, projectID,
+	)
+	return err
+}
+
+// UpsertRepositoryTx performs UpsertRepository within a given transaction.
+func UpsertRepositoryTx(tx *sql.Tx, path string, projectID int64) error {
+	_, err := tx.Exec(
 		`INSERT INTO repositories (path, project_id)
 		 VALUES (?, ?)
 		 ON CONFLICT(path) DO UPDATE SET project_id=excluded.project_id`,

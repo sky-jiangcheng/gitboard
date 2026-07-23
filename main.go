@@ -2,7 +2,7 @@ package main
 
 import (
 	"embed"
-	"fmt"
+	"strconv"
 	"log"
 	"os"
 	"path/filepath"
@@ -57,7 +57,7 @@ func main() {
 		}
 		depthStr, _ := db.GetConfig(database, "scan_depth")
 		maxDepth := 5
-		if d, err := parseInt(depthStr); err == nil && d > 0 && d <= 10 {
+		if d, err := strconv.Atoi(depthStr); err == nil && d > 0 && d <= 10 {
 			maxDepth = d
 		}
 		// Set default scan roots
@@ -123,15 +123,4 @@ func setupLogging() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	log.Printf("=== GitBoard log started ===")
 	log.Printf("PATH=%s", os.Getenv("PATH"))
-}
-
-func parseInt(s string) (int, error) {
-	v := 0
-	for _, c := range s {
-		if c < '0' || c > '9' {
-			return 0, fmt.Errorf("not a digit")
-		}
-		v = v*10 + int(c-'0')
-	}
-	return v, nil
 }

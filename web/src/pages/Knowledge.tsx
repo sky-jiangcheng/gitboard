@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   listAllNotes, listAllTags, searchAll, pinNote, importClaudeMemory,
@@ -20,6 +20,7 @@ function KnowledgePage() {
   const [pinnedOnly, setPinnedOnly] = useState(false)
   const [importing, setImporting] = useState(false)
   const [message, setMessage] = useState('')
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>()
 
   const fetchAll = useCallback(() => {
     Promise.all([listAllNotes(), listAllTags()])
@@ -33,7 +34,10 @@ function KnowledgePage() {
     setQuery(q)
     const trimmed = q.trim()
     if (!trimmed) { setHits(null); return }
-    searchAll(trimmed).then(setHits).catch(() => setHits([]))
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => {
+      searchAll(trimmed).then(setHits).catch(() => setHits([]))
+    }, 300)
   }
 
   const handlePin = async (id: number, pinned: boolean) => {
