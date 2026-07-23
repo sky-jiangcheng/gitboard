@@ -83,6 +83,8 @@ func (a *App) GetScanStatus() *ScanStatus {
 }
 
 // runFullScan performs the actual scan + history backfill.
+// Uses a merge strategy: existing projects/repos are preserved (including
+// their notes, todos, and starred status). Only truly orphaned data is removed.
 func (a *App) runFullScan(ctx context.Context) {
 	depthStr, _ := db.GetConfig(a.db, "scan_depth")
 	maxDepth, _ := strconv.Atoi(depthStr)
@@ -104,22 +106,18 @@ func (a *App) runFullScan(ctx context.Context) {
 	a.scanProgress = 0
 	a.scanMu.Unlock()
 
-	// Start a transaction to atomically replace all project/repo data.
+	// Collect all scanned repo paths for stale-data cleanup
+	scannedPaths := make([]string, 0, len(repos))
+	for _, r := range repos {
+		scannedPaths = append(scannedPaths, r.Path)
+	}
+
 	tx, err := a.db.Begin()
 	if err != nil {
 		log.Printf("scan transaction begin error: %v", err)
 		return
 	}
 	defer tx.Rollback() //nolint:errcheck
-
-	if _, err := tx.Exec("DELETE FROM repositories"); err != nil {
-		log.Printf("delete repos error: %v", err)
-		return
-	}
-	if _, err := tx.Exec("DELETE FROM projects"); err != nil {
-		log.Printf("delete projects error: %v", err)
-		return
-	}
 
 	for i, group := range groups {
 		select {
@@ -131,9 +129,9 @@ func (a *App) runFullScan(ctx context.Context) {
 		a.scanProgress = i + 1
 		a.scanMu.Unlock()
 
-		projectID, err := db.UpsertProjectTx(tx, group.Name, group.RootPath, 0, group.IsAutoGrouped)
+		projectID, err := db.SyncProjectTx(tx, group.Name, group.RootPath, 0, group.IsAutoGrouped)
 		if err != nil {
-			log.Printf("upsert project error: %v", err)
+			log.Printf("sync project error: %v", err)
 			continue
 		}
 		for _, repo := range group.Repos {
@@ -141,6 +139,12 @@ func (a *App) runFullScan(ctx context.Context) {
 				log.Printf("upsert repo error: %v", err)
 			}
 		}
+	}
+
+	// Remove stale repos and orphaned projects, preserving user data
+	if err := db.CleanupStaleDataTx(tx, scannedPaths); err != nil {
+		log.Printf("cleanup stale data error: %v", err)
+		return
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -153,9 +157,19 @@ func (a *App) runFullScan(ctx context.Context) {
 	log.Printf("scan complete: %d repos, %d projects", len(repos), len(groups))
 }
 
+// backfillTimeout is the maximum time allowed for a single backfill pass.
+const backfillTimeout = 30 * time.Minute
+
 // ensureHistoryBackfilled checks if we need to update stats, and backfills missing days.
-// Runs in background at startup. Uses config to track last backfill date to avoid repeating.
+// Runs in background at startup with a timeout. Uses config to track last backfill date
+// to avoid repeating.
 func (a *App) ensureHistoryBackfilled() {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("panic in backfill: %v", r)
+		}
+	}()
+
 	repos, err := db.GetAllRepositories(a.db)
 	if err != nil || len(repos) == 0 {
 		return
@@ -179,15 +193,24 @@ func (a *App) ensureHistoryBackfilled() {
 	log.Printf("backfilling stats from %s to %s...", startDate, today)
 	a.scanMu.Lock()
 	a.backfilling = true
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithTimeout(context.Background(), backfillTimeout)
 	a.scanCancel = cancel
 	a.scanMu.Unlock()
+
+	// Ensure cancel is always called to release context resources
+	defer func() {
+		cancel()
+		a.scanMu.Lock()
+		a.backfilling = false
+		a.scanCancel = nil
+		a.scanMu.Unlock()
+	}()
 
 	hasData := false
 	for _, repo := range repos {
 		select {
 		case <-ctx.Done():
-			log.Printf("stats refresh cancelled")
+			log.Printf("stats refresh cancelled or timed out")
 			return
 		default:
 		}
@@ -218,9 +241,5 @@ func (a *App) ensureHistoryBackfilled() {
 	}
 
 	_ = db.SetConfig(a.db, "last_stats_backfill", today)
-	a.scanMu.Lock()
-	a.backfilling = false
-	a.scanCancel = nil
-	a.scanMu.Unlock()
 	log.Printf("stats backfill %s, has data: %v", today, hasData)
 }

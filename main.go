@@ -2,10 +2,11 @@ package main
 
 import (
 	"embed"
-	"strconv"
 	"log"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strconv"
 
 	"gitboard/internal/db"
 	"gitboard/internal/platform"
@@ -100,20 +101,54 @@ func main() {
 
 func ensurePath() {
 	path := os.Getenv("PATH")
-	if path == "" {
-		path = "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+	if runtime.GOOS == "windows" {
+		// Common Windows binary directories
+		extras := []string{
+			`C:\Program Files\Git\cmd`,
+			`C:\Program Files\Git\bin`,
+			`C:\Program Files (x86)\Git\cmd`,
+			`C:\Program Files (x86)\Git\bin`,
+			`C:\Windows\System32`,
+			`C:\Windows`,
+		}
+		for _, d := range extras {
+			if path == "" {
+				path = d
+			} else {
+				path = d + string(os.PathListSeparator) + path
+			}
+		}
 	} else {
-		path = "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:" + path
+		// Unix-like: prepend common binary directories
+		extras := "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+		if path == "" {
+			path = extras
+		} else {
+			path = extras + string(os.PathListSeparator) + path
+		}
 	}
 	os.Setenv("PATH", path)
 }
 
 func setupLogging() {
-	logDir, err := os.UserHomeDir()
-	if err != nil {
-		logDir = os.TempDir()
+	var logDir string
+	switch runtime.GOOS {
+	case "darwin":
+		home, err := os.UserHomeDir()
+		if err != nil {
+			home = os.TempDir()
+		}
+		logDir = filepath.Join(home, "Library", "Logs", "GitBoard")
+	case "windows":
+		logDir = filepath.Join(os.TempDir(), "GitBoard")
+	default: // linux and others
+		// Follow XDG Base Directory specification
+		if cacheDir, err := os.UserCacheDir(); err == nil {
+			logDir = filepath.Join(cacheDir, "gitboard")
+		} else {
+			logDir = filepath.Join(os.TempDir(), "gitboard")
+		}
 	}
-	logDir = filepath.Join(logDir, "Library", "Logs")
 	_ = os.MkdirAll(logDir, 0750)
 	logFile := filepath.Join(logDir, "gitboard.log")
 	f, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0640)
